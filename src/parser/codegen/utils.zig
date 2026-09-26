@@ -161,10 +161,10 @@ pub fn isJsdocBody(value: []const u8) bool {
 /// True when a block comment is a legal header or annotation kept under the `.some` filter.
 pub fn isSignificantBlockComment(value: []const u8) bool {
     if (value.len == 0) return false;
-    switch (value[0]) {
-        '!', '*', '#', '@' => return true,
-        else => {},
-    }
+    if (value[0] == '!' or value[0] == '*') return true;
+    // annotations like `/* @__PURE__ */` may be spaced, `/*!` and `/**` never are
+    const body = std.mem.trimStart(u8, value, &std.ascii.whitespace);
+    if (body.len > 0 and (body[0] == '@' or body[0] == '#')) return true;
     var i: usize = 0;
     while (std.mem.findScalarPos(u8, value, i, '@')) |pos| {
         const rest = value[pos..];

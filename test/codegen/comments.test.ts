@@ -119,6 +119,15 @@ test("a pure annotation inline before a call", () => {
   );
 });
 
+test("the default keeps spaced annotations and drops plain comments", () => {
+  for (const comment of ["/* @__PURE__ */", "/* #__PURE__ */", "/*\t@__NO_SIDE_EFFECTS__ */"]) {
+    expect(gen(`const x = ${comment} foo();`), comment).toBe(`const x = ${comment} foo();`);
+  }
+  for (const comment of ["/* ! not legal */", "/* * not jsdoc */", "/* plain */"]) {
+    expect(gen(`const x = ${comment} foo();`), comment).toBe("const x = foo();");
+  }
+});
+
 test("a trailing same-line comment", () => {
   expect(gen(`foo(); // tail\nbar();`, ALL)).toMatchInlineSnapshot(`
     "foo(); // tail
