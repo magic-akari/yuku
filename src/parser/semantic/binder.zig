@@ -1026,16 +1026,17 @@ pub const SymbolTracker = struct {
                 _ = try self.declare(name, member.id);
                 self.pending = saved;
             },
-            // a member tag references its leftmost object, a lone lowercase tag is intrinsic
+            // like the JSX transforms, a lone tag starting with a-z or holding a `-` is an
+            // intrinsic string, and a member tag references its leftmost object unless `this`
             inline .jsx_opening_element, .jsx_closing_element => |el| {
                 if (jsxTagRoot(self.tree, el.name)) |root_idx| {
                     const id = self.tree.data(root_idx).jsx_identifier;
                     const text = self.tree.string(id.name);
-                    const member = switch (self.tree.data(el.name)) {
-                        .jsx_member_expression => true,
-                        else => false,
-                    };
-                    if (member or (text.len > 0 and text[0] >= 'A' and text[0] <= 'Z')) {
+                    const is_value = if (self.tree.data(el.name) == .jsx_member_expression)
+                        !std.mem.eql(u8, text, "this")
+                    else
+                        text.len > 0 and !std.ascii.isLower(text[0]);
+                    if (is_value and std.mem.findScalar(u8, text, '-') == null) {
                         _ = try self.addReference(id.name, scope.current, root_idx, .{});
                     }
                 }

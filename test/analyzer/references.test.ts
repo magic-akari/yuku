@@ -273,6 +273,18 @@ describe("JSX", () => {
               motion → #0"
       `);
   });
+
+  test("a tag is a component unless JSX transforms emit it as an intrinsic string", () => {
+    const components = ["_Widget", "_widget", "$Widget", "$", "éWidget", "ÉWidget", "Ωmega", "中文"];
+    for (const name of components) {
+      const module = new Analyzer().addFile("input.jsx", `const ${name} = 1; <${name} />;`);
+      expect(module.rootScope.find(name)?.references, name).toHaveLength(1);
+    }
+    for (const tag of ["widget", "foo-bar", "Foo-Bar", "a:b", "this", "this.Foo"]) {
+      const module = new Analyzer().addFile("input.jsx", `<${tag} />;`);
+      expect(module.unresolvedReferences, tag).toEqual([]);
+    }
+  });
 });
 
 describe("reference cross-indexes", () => {
