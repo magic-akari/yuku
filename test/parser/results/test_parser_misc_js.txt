@@ -1,10 +1,21 @@
 test/parser/misc/js
 ===================
-Passed:       53/53 (100.00%)
+Passed:       57/57 (100.00%)
 Failed:       0
-AST mismatch: 0/53
+AST mismatch: 0/57
 
 ✓ test/parser/misc/js/accessor-line-terminator.js
+✓ test/parser/misc/js/arrow-parameter-parenthesized-with-computed-key.js
+error: Parentheses are not allowed in this binding pattern
+   |
+ 3 | 
+ 4 | ([(a)] = x, {[(c) = 1]: d}) => 0;
+   |    ^
+ 5 | 
+   |
+   = help: Remove the extra parentheses. Binding patterns can only be identifiers, destructuring patterns, or assignment patterns, not parenthesized expressions.
+
+
 ✓ test/parser/misc/js/async-arrow-function-line-terminator-1.js
 error: Unexpected '=>'
    |
@@ -18,6 +29,15 @@ error: Unexpected '=>'
 
 
 ✓ test/parser/misc/js/async-arrow-function-line-terminator-2.js
+✓ test/parser/misc/js/async-call-await-identifier.js
+error: 'await' is reserved in an async/module context and cannot be used as an identifier
+   |
+ 7 | 
+ 8 | async({await}) => 1;
+   |        ^^^^^
+ 9 | async await => 1;
+   |
+
 ✓ test/parser/misc/js/async-function-call-with-arguments.js
 ✓ test/parser/misc/js/async-function-call-with-spread-arguments.js
 ✓ test/parser/misc/js/async-function-call.js
@@ -170,6 +190,28 @@ error: Identifier cannot immediately follow a numeric literal
 
 ✓ test/parser/misc/js/let-identifier-contexts.js
 ✓ test/parser/misc/js/octal-literal-with-separator.js
+✓ test/parser/misc/js/rest-trailing-comma-nested.js
+error: Rest element cannot have a trailing comma in array destructuring.
+   |
+ 4 | 
+ 5 | [...a,] = x;
+   | ^^^^^^^
+ 6 | ({...a,} = x);
+   |
+   = help: Remove the trailing comma after the rest element
+
+
+✓ test/parser/misc/js/shorthand-default-outside-pattern.js
+error: Shorthand property cannot have a default value in object expression
+   |
+ 7 | 
+ 8 | [{a = 1}, f({})];
+   |   ^^^^^
+ 9 | x = {a = 1, b: f({})};
+   |
+   = help: Use '{ a: a = 1 }' syntax or this is only valid in destructuring patterns.
+
+
 ✓ test/parser/misc/js/tagged-template-with-optional-chaining.js
 error: Tagged template expressions are not permitted in an optional chain
    |

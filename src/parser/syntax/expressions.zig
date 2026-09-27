@@ -27,7 +27,6 @@ const extension = @import("../extension.zig");
 const ts = @import("ts/types.zig");
 
 const ParseExpressionOpts = struct {
-    in_cover: bool = false,
     // set only by the for-head and by positions that inherit [?In], nested calls reset `in`
     respect_allow_in: bool = false,
 };
@@ -37,7 +36,7 @@ pub fn parseExpression(
     min_precedence: u8,
     opts: ParseExpressionOpts,
 ) Error!?ast.NodeIndex {
-    var left = try parsePrefix(parser, opts, min_precedence) orelse return null;
+    var left = try parsePrefix(parser, min_precedence) orelse return null;
     const is_ts = parser.tree.isTs();
 
     while (true) {
@@ -93,7 +92,7 @@ inline fn infixPrecedence(token: Token, is_ts: bool) u8 {
     return token.tag.precedence();
 }
 
-fn parsePrefix(parser: *Parser, opts: ParseExpressionOpts, precedence: u8) Error!?ast.NodeIndex {
+fn parsePrefix(parser: *Parser, precedence: u8) Error!?ast.NodeIndex {
     if (try extension.at(.expression_prefix, .{parser})) |outcome| return outcome.node;
     const tag = parser.current_token.tag;
 
@@ -147,7 +146,7 @@ fn parsePrefix(parser: *Parser, opts: ParseExpressionOpts, precedence: u8) Error
         if (parser.tree.isJsx()) return jsx.parseJsxExpression(parser);
     }
 
-    return parsePrimaryExpression(parser, opts, precedence);
+    return parsePrimaryExpression(parser, precedence);
 }
 
 fn parseInfix(parser: *Parser, precedence: u8, left: ast.NodeIndex) Error!?ast.NodeIndex {
@@ -198,11 +197,7 @@ fn parseInfix(parser: *Parser, precedence: u8, left: ast.NodeIndex) Error!?ast.N
     return null;
 }
 
-pub inline fn parsePrimaryExpression(
-    parser: *Parser,
-    opts: ParseExpressionOpts,
-    precedence: u8,
-) Error!?ast.NodeIndex {
+pub inline fn parsePrimaryExpression(parser: *Parser, precedence: u8) Error!?ast.NodeIndex {
     if (parser.current_token.tag.isNumericLiteral()) {
         return literals.parseNumericLiteral(parser);
     }
@@ -230,8 +225,8 @@ pub inline fn parsePrimaryExpression(
         .slash, .slash_assign => literals.parseRegExpLiteral(parser),
         .template_head => literals.parseTemplateLiteral(parser, false),
         .no_substitution_template => literals.parseNoSubstitutionTemplate(parser, false),
-        .left_bracket => parseArrayExpression(parser, opts.in_cover),
-        .left_brace => parseObjectExpression(parser, opts.in_cover),
+        .left_bracket => parseArrayExpression(parser),
+        .left_brace => parseObjectExpression(parser),
         .function => functions.parseFunction(parser, .{ .is_expression = true }, null),
         .class => class.parseClass(parser, .{ .is_expression = true }, null),
         .at => blk: {
@@ -287,10 +282,7 @@ fn parseParenthesizedOrArrowFunction(
     const cover = try parenthesized.parseCover(parser) orelse return null;
 
     // ts arrows all went through the tristate above, a stray `:` belongs to the outer context
-    const is_arrow = parser.current_token.tag == .arrow and
-        !parser.current_token.hasLineTerminatorBefore() and
-        precedence <= Precedence.Assignment;
-    if (is_arrow) {
+    if (isArrowNext(parser, precedence)) {
         return parenthesized.coverToArrowFunction(parser, cover, false, start);
     }
 
@@ -347,7 +339,11 @@ fn parseAsyncFunctionOrArrow(parser: *Parser, precedence: u8) Error!?ast.NodeInd
         const after_id = parser.peekAhead();
         if (after_id.tag == .arrow and !after_id.hasLineTerminatorBefore()) {
             if (is_escaped) try parser.reportEscapedKeyword(async_span);
+            // an async arrow's parameter is read where `await` is a keyword
+            const outer_await = parser.context.await;
+            parser.context.await = true;
             const id = try literals.parseIdentifier(parser) orelse return null;
+            parser.context.await = outer_await;
             return parenthesized.identifierToArrowFunction(parser, id, true, async_span.start);
         }
     }
@@ -364,37 +360,31 @@ fn parseAsyncArrowFunctionOrCall(
 ) Error!?ast.NodeIndex {
     const start = async_span.start;
 
-    if (parser.tree.isTs() and precedence <= Precedence.Assignment)
-        switch (ts.classifyArrowHead(parser)) {
-            .yes => {
-                if (is_escaped_async) try parser.reportEscapedKeyword(async_span);
-                return ts.parseArrow(parser, true, start);
-            },
-            .maybe => if (try ts.tryParseArrow(parser, true, start)) |arrow| {
-                if (is_escaped_async) try parser.reportEscapedKeyword(async_span);
-                return arrow;
-            },
-            .no => {},
-        };
+    // an async head can still be a call, so even a sure arrow is only tried
+    if (precedence <= Precedence.Assignment and ts.classifyArrowHead(parser) != .no) {
+        if (try ts.tryParseArrow(parser, true, start)) |arrow| {
+            if (is_escaped_async) try parser.reportEscapedKeyword(async_span);
+            return arrow;
+        }
+    }
 
-    const saved_await_is_keyword = parser.context.await;
-
-    parser.context.await = true;
-
-    defer parser.context.await = saved_await_is_keyword;
-
+    const head = parser.checkpoint();
     const cover = try parenthesized.parseCover(parser) orelse return null;
 
-    // ts arrows all went through the tristate above
-    const is_arrow = parser.current_token.tag == .arrow and
-        !parser.current_token.hasLineTerminatorBefore() and
-        precedence <= Precedence.Assignment;
-    if (is_arrow) {
+    // the lookahead turned it down, so it is reparsed as an arrow to report why
+    if (isArrowNext(parser, precedence)) {
+        parser.rewind(head);
         if (is_escaped_async) try parser.reportEscapedKeyword(async_span);
-        return parenthesized.coverToArrowFunction(parser, cover, true, start);
+        return ts.parseArrow(parser, true, start);
     }
 
     return parenthesized.coverToCallExpression(parser, cover, async_id);
+}
+
+inline fn isArrowNext(parser: *Parser, precedence: u8) bool {
+    const token = parser.current_token;
+    return token.tag == .arrow and !token.hasLineTerminatorBefore() and
+        precedence <= Precedence.Assignment;
 }
 
 fn parseUnaryExpression(parser: *Parser) Error!?ast.NodeIndex {
@@ -622,7 +612,7 @@ fn parseNewExpression(parser: *Parser) Error!?ast.NodeIndex {
             break :blk try parseNewExpression(parser) orelse return null;
         }
 
-        break :blk try parsePrimaryExpression(parser, .{}, Precedence.New) orelse return null;
+        break :blk try parsePrimaryExpression(parser, Precedence.New) orelse return null;
     };
 
     var type_arguments: ast.NodeIndex = .null;
@@ -994,43 +984,16 @@ pub fn isSimpleAssignmentTarget(parser: *Parser, index: ast.NodeIndex) bool {
     };
 }
 
-pub fn parseArrayExpression(parser: *Parser, in_cover: bool) Error!?ast.NodeIndex {
+pub fn parseArrayExpression(parser: *Parser) Error!?ast.NodeIndex {
     std.debug.assert(parser.current_token.tag == .left_bracket);
     const cover = try array.parseCover(parser) orelse return null;
-
-    const needs_validation =
-        // a cover nested in another cover or heading a pattern is validated later
-        !in_cover and
-        parser.state.cover_has_init_name and
-        !isPartOfPattern(parser);
-
-    if (!in_cover) {
-        parser.state.cover_has_init_name = false;
-    }
-
-    return array.coverToExpression(parser, cover, needs_validation);
+    return array.coverToExpression(parser, cover);
 }
 
-pub fn parseObjectExpression(parser: *Parser, in_cover: bool) Error!?ast.NodeIndex {
+pub fn parseObjectExpression(parser: *Parser) Error!?ast.NodeIndex {
     std.debug.assert(parser.current_token.tag == .left_brace);
     const cover = try object.parseCover(parser) orelse return null;
-
-    const needs_validation =
-        // a cover nested in another cover or heading a pattern is validated later
-        !in_cover and
-        parser.state.cover_has_init_name and
-        !isPartOfPattern(parser);
-
-    if (!in_cover) {
-        parser.state.cover_has_init_name = false;
-    }
-
-    return object.coverToExpression(parser, cover, needs_validation);
-}
-
-inline fn isPartOfPattern(parser: *Parser) bool {
-    return parser.current_token.tag == .assign or
-        parser.current_token.tag == .in or parser.current_token.tag == .of;
+    return object.coverToExpression(parser, cover);
 }
 
 fn parseStaticMemberExpression(
@@ -1354,7 +1317,7 @@ pub fn parseLeftHandSideExpression(parser: *Parser, ctx: LhsContext) Error!?ast.
         .left_paren => try parseParenthesizedExpression(parser) orelse return null,
         .new => try parseNewExpression(parser) orelse return null,
         .import => try parseImportExpression(parser, null) orelse return null,
-        else => try parsePrimaryExpression(parser, .{}, Precedence.Call) orelse return null,
+        else => try parsePrimaryExpression(parser, Precedence.Call) orelse return null,
     };
 
     const is_ts = parser.tree.isTs();

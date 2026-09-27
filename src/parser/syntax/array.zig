@@ -5,6 +5,7 @@ const ast = @import("../ast.zig");
 const Precedence = @import("../token.zig").Precedence;
 
 const grammar = @import("../grammar.zig");
+const expressions = @import("expressions.zig");
 
 /// Elements parsed by the array cover grammar, before classification as an expression or a pattern.
 pub const ArrayCover = struct {
@@ -35,9 +36,10 @@ pub fn parseCover(parser: *Parser) Error!?ArrayCover {
         if (parser.current_token.tag == .spread) {
             const spread_start = parser.current_token.span.start;
             try parser.advance() orelse return null;
-            const argument = try grammar.parseExpressionInCover(
+            const argument = try expressions.parseExpression(
                 parser,
                 Precedence.Assignment,
+                .{},
             ) orelse return null;
             const spread_end = parser.tree.span(argument).end;
             const spread = try parser.tree.addNode(
@@ -47,17 +49,17 @@ pub fn parseCover(parser: *Parser) Error!?ArrayCover {
             try parser.scratch_cover.append(parser.allocator(), spread);
             end = spread_end;
         } else {
-            const element = try grammar.parseExpressionInCover(parser, Precedence.Assignment) orelse
-                return null;
+            const element = try expressions.parseExpression(
+                parser,
+                Precedence.Assignment,
+                .{},
+            ) orelse return null;
             try parser.scratch_cover.append(parser.allocator(), element);
             end = parser.tree.span(element).end;
         }
 
         if (parser.current_token.tag == .comma) {
             try parser.advance() orelse return null;
-            if (parser.current_token.tag == .right_bracket) {
-                parser.state.cover_has_trailing_comma = start;
-            }
         } else if (parser.current_token.tag != .right_bracket) {
             try parser.reportExpected(
                 parser.current_token.span,
@@ -94,16 +96,12 @@ pub fn parseCover(parser: *Parser) Error!?ArrayCover {
     };
 }
 
-/// Converts an array cover to an ArrayExpression, rejecting CoverInitializedName when `validate` is set.
-pub fn coverToExpression(parser: *Parser, cover: ArrayCover, validate: bool) Error!?ast.NodeIndex {
-    const array_expression = try parser.tree.addNode(
+/// Converts an array cover to an ArrayExpression.
+pub fn coverToExpression(parser: *Parser, cover: ArrayCover) Error!?ast.NodeIndex {
+    return try parser.tree.addNode(
         .{ .array_expression = .{ .elements = cover.elements } },
         .{ .start = cover.start, .end = cover.end },
     );
-
-    if (validate) try grammar.validateNoCoverInitializedSyntax(parser, array_expression);
-
-    return array_expression;
 }
 
 /// Converts an array cover to an ArrayPattern.
@@ -150,14 +148,12 @@ fn toArrayPatternImpl(
         const elem_data = parser.tree.data(elem);
 
         if (elem_data == .spread_element) {
-            if (parser.state.cover_has_trailing_comma == span.start) {
+            if (i == elements_len - 1 and grammar.isFollowedByComma(parser, elem)) {
                 try parser.report(
                     span,
                     "Rest element cannot have a trailing comma in array destructuring.",
                     .{ .help = "Remove the trailing comma after the rest element" },
                 );
-
-                parser.state.cover_has_trailing_comma = null;
             }
 
             if (i != elements_len - 1) {

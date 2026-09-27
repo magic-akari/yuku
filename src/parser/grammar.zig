@@ -6,62 +6,13 @@ const object = @import("syntax/object.zig");
 const expressions = @import("syntax/expressions.zig");
 const array = @import("syntax/array.zig");
 
-/// Parses an expression inside a cover grammar, deferring validation until the context is known.
-pub inline fn parseExpressionInCover(parser: *Parser, precedence: u8) Error!?ast.NodeIndex {
-    return expressions.parseExpression(parser, precedence, .{ .in_cover = true });
-}
-
-/// Reports every CoverInitializedName (`{ a = 1 }`) left inside an expression.
-pub fn validateNoCoverInitializedSyntax(parser: *Parser, expr: ast.NodeIndex) Error!void {
-    const data = parser.tree.data(expr);
-
-    switch (data) {
-        .object_expression => |obj| {
-            const properties = parser.tree.extra(obj.properties);
-            for (properties) |prop| {
-                if (prop == .null) continue;
-
-                const prop_data = parser.tree.data(prop);
-
-                switch (prop_data) {
-                    .object_property => |obj_prop| {
-                        if (obj_prop.shorthand and isCoverInitializedName(parser, obj_prop.value)) {
-                            try reportCoverInitializedNameError(parser, prop);
-                        }
-
-                        try validateNoCoverInitializedSyntax(parser, obj_prop.value);
-                    },
-                    .spread_element => |spread| {
-                        try validateNoCoverInitializedSyntax(parser, spread.argument);
-                    },
-                    else => {},
-                }
-            }
-        },
-        .array_expression => |arr| {
-            const elements = parser.tree.extra(arr.elements);
-            for (elements) |elem| {
-                if (elem == .null) continue;
-                try validateNoCoverInitializedSyntax(parser, elem);
-            }
-        },
-        .object_property => |obj_prop| {
-            if (obj_prop.shorthand and isCoverInitializedName(parser, obj_prop.value)) {
-                try reportCoverInitializedNameError(parser, expr);
-            }
-        },
-        .spread_element => |spread| {
-            return validateNoCoverInitializedSyntax(parser, spread.argument);
-        },
-        .parenthesized_expression => |paren| {
-            return validateNoCoverInitializedSyntax(parser, paren.expression);
-        },
-        .sequence_expression => |seq| {
-            for (parser.tree.extra(seq.expressions)) |e| {
-                try validateNoCoverInitializedSyntax(parser, e);
-            }
-        },
-        else => {},
+/// Reports every `{ a = 1 }` shorthand default whose literal never became a pattern.
+pub fn reportCoverInitializedNames(parser: *Parser) Error!void {
+    for (parser.tree.nodes.items(.data), 0..) |data, i| {
+        if (data != .object_property) continue;
+        const prop = data.object_property;
+        if (!prop.shorthand or !isCoverInitializedName(parser, prop.value)) continue;
+        try reportCoverInitializedNameError(parser, @enumFromInt(i));
     }
 }
 
@@ -77,6 +28,14 @@ pub inline fn reportCoverInitializedNameError(parser: *Parser, node: ast.NodeInd
         "Shorthand property cannot have a default value in object expression",
         .{ .help = "Use '{ a: a = 1 }' syntax or this is only valid in destructuring patterns." },
     );
+}
+
+/// Whether a comma directly follows `node` in the source.
+pub fn isFollowedByComma(parser: *Parser, node: ast.NodeIndex) bool {
+    var peek = parser.beginPeek();
+    defer peek.end();
+    parser.lexer.rewindTo(parser.tree.span(node).end);
+    return peek.next().tag == .comma;
 }
 
 pub const PatternContext = enum {

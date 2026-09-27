@@ -1,0 +1,414 @@
+{
+  "program": {
+    "type": "Program",
+    "start": 0,
+    "end": 207,
+    "sourceType": "script",
+    "hashbang": null,
+    "body": [
+      {
+        "type": "ExpressionStatement",
+        "start": 0,
+        "end": 13,
+        "expression": {
+          "type": "CallExpression",
+          "start": 0,
+          "end": 12,
+          "callee": {
+            "type": "Identifier",
+            "start": 0,
+            "end": 5,
+            "name": "async"
+          },
+          "arguments": [
+            {
+              "type": "Identifier",
+              "start": 6,
+              "end": 11,
+              "name": "await"
+            }
+          ],
+          "optional": false
+        }
+      },
+      {
+        "type": "ExpressionStatement",
+        "start": 14,
+        "end": 30,
+        "expression": {
+          "type": "CallExpression",
+          "start": 14,
+          "end": 29,
+          "callee": {
+            "type": "Identifier",
+            "start": 14,
+            "end": 19,
+            "name": "async"
+          },
+          "arguments": [
+            {
+              "type": "Identifier",
+              "start": 20,
+              "end": 25,
+              "name": "await"
+            },
+            {
+              "type": "Literal",
+              "start": 27,
+              "end": 28,
+              "value": 1,
+              "raw": "1"
+            }
+          ],
+          "optional": false
+        }
+      },
+      {
+        "type": "ExpressionStatement",
+        "start": 31,
+        "end": 48,
+        "expression": {
+          "type": "CallExpression",
+          "start": 31,
+          "end": 47,
+          "callee": {
+            "type": "Identifier",
+            "start": 31,
+            "end": 36,
+            "name": "async"
+          },
+          "arguments": [
+            {
+              "type": "AssignmentExpression",
+              "start": 37,
+              "end": 46,
+              "left": {
+                "type": "Identifier",
+                "start": 37,
+                "end": 38,
+                "name": "x"
+              },
+              "right": {
+                "type": "Identifier",
+                "start": 41,
+                "end": 46,
+                "name": "await"
+              },
+              "operator": "="
+            }
+          ],
+          "optional": false
+        }
+      },
+      {
+        "type": "ExpressionStatement",
+        "start": 49,
+        "end": 64,
+        "expression": {
+          "type": "CallExpression",
+          "start": 49,
+          "end": 63,
+          "callee": {
+            "type": "Identifier",
+            "start": 49,
+            "end": 54,
+            "name": "async"
+          },
+          "arguments": [
+            {
+              "type": "ObjectExpression",
+              "start": 55,
+              "end": 62,
+              "properties": [
+                {
+                  "type": "Property",
+                  "start": 56,
+                  "end": 61,
+                  "key": {
+                    "type": "Identifier",
+                    "start": 56,
+                    "end": 61,
+                    "name": "await"
+                  },
+                  "value": {
+                    "type": "Identifier",
+                    "start": 56,
+                    "end": 61,
+                    "name": "await"
+                  },
+                  "kind": "init",
+                  "method": false,
+                  "shorthand": true,
+                  "computed": false
+                }
+              ]
+            }
+          ],
+          "optional": false
+        }
+      },
+      {
+        "type": "ExpressionStatement",
+        "start": 65,
+        "end": 92,
+        "expression": {
+          "type": "CallExpression",
+          "start": 65,
+          "end": 91,
+          "callee": {
+            "type": "Identifier",
+            "start": 65,
+            "end": 70,
+            "name": "async"
+          },
+          "arguments": [
+            {
+              "type": "ArrowFunctionExpression",
+              "start": 71,
+              "end": 90,
+              "id": null,
+              "generator": false,
+              "async": true,
+              "params": [],
+              "body": {
+                "type": "AwaitExpression",
+                "start": 83,
+                "end": 90,
+                "argument": {
+                  "type": "Identifier",
+                  "start": 89,
+                  "end": 90,
+                  "name": "x"
+                }
+              },
+              "expression": true
+            }
+          ],
+          "optional": false
+        }
+      },
+      {
+        "type": "ExpressionStatement",
+        "start": 93,
+        "end": 130,
+        "expression": {
+          "type": "ArrowFunctionExpression",
+          "start": 93,
+          "end": 129,
+          "id": null,
+          "generator": false,
+          "async": true,
+          "params": [
+            {
+              "type": "AssignmentPattern",
+              "start": 100,
+              "end": 123,
+              "left": {
+                "type": "Identifier",
+                "start": 100,
+                "end": 101,
+                "name": "x"
+              },
+              "right": {
+                "type": "ArrowFunctionExpression",
+                "start": 104,
+                "end": 123,
+                "id": null,
+                "generator": false,
+                "async": false,
+                "params": [
+                  {
+                    "type": "Identifier",
+                    "start": 104,
+                    "end": 105,
+                    "name": "y"
+                  }
+                ],
+                "body": {
+                  "type": "BlockStatement",
+                  "start": 109,
+                  "end": 123,
+                  "body": [
+                    {
+                      "type": "VariableDeclaration",
+                      "start": 111,
+                      "end": 121,
+                      "kind": "var",
+                      "declarations": [
+                        {
+                          "type": "VariableDeclarator",
+                          "start": 115,
+                          "end": 120,
+                          "id": {
+                            "type": "Identifier",
+                            "start": 115,
+                            "end": 120,
+                            "name": "await"
+                          },
+                          "init": null
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "expression": false
+              }
+            }
+          ],
+          "body": {
+            "type": "Literal",
+            "start": 128,
+            "end": 129,
+            "value": 1,
+            "raw": "1"
+          },
+          "expression": true
+        }
+      },
+      {
+        "type": "ExpressionStatement",
+        "start": 132,
+        "end": 152,
+        "expression": {
+          "type": "ArrowFunctionExpression",
+          "start": 132,
+          "end": 151,
+          "id": null,
+          "generator": false,
+          "async": true,
+          "params": [
+            {
+              "type": "ObjectPattern",
+              "start": 138,
+              "end": 145,
+              "properties": [
+                {
+                  "type": "Property",
+                  "start": 139,
+                  "end": 144,
+                  "kind": "init",
+                  "key": {
+                    "type": "Identifier",
+                    "start": 139,
+                    "end": 144,
+                    "name": "await"
+                  },
+                  "value": {
+                    "type": "Identifier",
+                    "start": 139,
+                    "end": 144,
+                    "name": "await"
+                  },
+                  "method": false,
+                  "shorthand": true,
+                  "computed": false
+                }
+              ]
+            }
+          ],
+          "body": {
+            "type": "Literal",
+            "start": 150,
+            "end": 151,
+            "value": 1,
+            "raw": "1"
+          },
+          "expression": true
+        }
+      },
+      {
+        "type": "ExpressionStatement",
+        "start": 153,
+        "end": 170,
+        "expression": {
+          "type": "ArrowFunctionExpression",
+          "start": 153,
+          "end": 169,
+          "id": null,
+          "generator": false,
+          "async": true,
+          "params": [
+            {
+              "type": "Identifier",
+              "start": 159,
+              "end": 164,
+              "name": "await"
+            }
+          ],
+          "body": {
+            "type": "Literal",
+            "start": 168,
+            "end": 169,
+            "value": 1,
+            "raw": "1"
+          },
+          "expression": true
+        }
+      },
+      {
+        "type": "ExpressionStatement",
+        "start": 187,
+        "end": 206,
+        "expression": {
+          "type": "ArrowFunctionExpression",
+          "start": 187,
+          "end": 205,
+          "id": null,
+          "generator": false,
+          "async": true,
+          "params": [
+            {
+              "type": "Identifier",
+              "start": 194,
+              "end": 199,
+              "name": "await"
+            }
+          ],
+          "body": {
+            "type": "Literal",
+            "start": 204,
+            "end": 205,
+            "value": 1,
+            "raw": "1"
+          },
+          "expression": true
+        }
+      }
+    ]
+  },
+  "comments": [],
+  "diagnostics": [
+    {
+      "severity": "error",
+      "message": "'await' is reserved in an async/module context and cannot be used as an identifier",
+      "start": 139,
+      "end": 144,
+      "help": null,
+      "labels": []
+    },
+    {
+      "severity": "error",
+      "message": "'await' is reserved in an async/module context and cannot be used as an identifier",
+      "start": 159,
+      "end": 164,
+      "help": null,
+      "labels": []
+    },
+    {
+      "severity": "error",
+      "message": "Expected ',' or ')' in parenthesized expression, but found 'x'",
+      "start": 183,
+      "end": 184,
+      "help": "Add a comma between elements or close with ')'.",
+      "labels": []
+    },
+    {
+      "severity": "error",
+      "message": "'await' is reserved in an async/module context and cannot be used as a binding identifier",
+      "start": 194,
+      "end": 199,
+      "help": null,
+      "labels": []
+    }
+  ]
+}

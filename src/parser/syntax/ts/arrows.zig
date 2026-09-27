@@ -72,12 +72,18 @@ pub fn parseArrow(parser: *Parser, is_async: bool, arrow_start: u32) Error!?ast.
         false,
     ) orelse return null;
 
-    const return_type: ast.NodeIndex = if (parser.current_token.tag == .colon)
+    const has_return_type = parser.tree.isTs() and parser.current_token.tag == .colon;
+    const return_type: ast.NodeIndex = if (has_return_type)
         try predicate.parseReturnTypeAnnotation(parser) orelse return null
     else
         .null;
 
     if (parser.current_token.tag != .arrow or parser.current_token.hasLineTerminatorBefore()) {
+        try parser.reportExpected(
+            parser.current_token.span,
+            "Expected '=>' on the same line after the arrow function parameters",
+            .{},
+        );
         return null;
     }
 

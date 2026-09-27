@@ -7,6 +7,7 @@ const ast = @import("ast.zig");
 const util = @import("util");
 
 const statements = @import("syntax/statements.zig");
+const grammar = @import("grammar.zig");
 const comments = @import("comments.zig");
 
 /// How comments are collected. Not at all, as a flat list, attached to host nodes, or both.
@@ -68,9 +69,8 @@ pub const TsContext = packed struct {
 };
 
 const ParserState = struct {
-    // start index of the cover that had a trailing comma
-    cover_has_trailing_comma: ?u32 = null,
-    cover_has_init_name: bool = false,
+    // `{ a = 1 }` defaults not yet part of a pattern, any left at the end are errors
+    cover_init_names: u32 = 0,
     // `(a) = b` is legal, but the same node is a syntax error in binding position
     stripped_paren: ?ast.NodeIndex = null,
 };
@@ -136,6 +136,7 @@ pub const Parser = struct {
 
     fn parseInner(self: *Parser) Error!void {
         const alloc = self.allocator();
+        errdefer self.tree.arena.deinit();
 
         self.lexer = try lexer.Lexer.init(
             self.source,
@@ -156,11 +157,10 @@ pub const Parser = struct {
             self.current_token = try self.recoverNextToken();
         };
 
-        errdefer self.tree.arena.deinit();
-
         try self.ensureCapacity();
 
         const body = try self.parseBody(null, .program);
+        if (self.state.cover_init_names > 0) try grammar.reportCoverInitializedNames(self);
 
         std.debug.assert(self.current_token.tag == .eof);
         try self.commitEof();

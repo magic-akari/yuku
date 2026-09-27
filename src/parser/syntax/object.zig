@@ -7,6 +7,7 @@ const TokenTag = @import("../token.zig").TokenTag;
 const Precedence = @import("../token.zig").Precedence;
 
 const literals = @import("literals.zig");
+const expressions = @import("expressions.zig");
 const grammar = @import("../grammar.zig");
 const functions = @import("functions.zig");
 const ts = @import("ts/types.zig");
@@ -34,9 +35,10 @@ pub fn parseCover(parser: *Parser) Error!?ObjectCover {
         if (parser.current_token.tag == .spread) {
             const spread_start = parser.current_token.span.start;
             try parser.advance() orelse return null;
-            const argument = try grammar.parseExpressionInCover(
+            const argument = try expressions.parseExpression(
                 parser,
                 Precedence.Assignment,
+                .{},
             ) orelse
                 return null;
             const spread_end = parser.tree.span(argument).end;
@@ -54,9 +56,6 @@ pub fn parseCover(parser: *Parser) Error!?ObjectCover {
 
         if (parser.current_token.tag == .comma) {
             try parser.advance() orelse return null;
-            if (parser.current_token.tag == .right_brace) {
-                parser.state.cover_has_trailing_comma = start;
-            }
         } else if (parser.current_token.tag != .right_brace) {
             try parser.reportExpected(
                 parser.current_token.span,
@@ -150,11 +149,11 @@ fn parseCoverProperty(parser: *Parser) Error!?ast.NodeIndex {
         if (parser.current_token.tag == .left_bracket) {
             computed = true;
             try parser.advance() orelse return null;
-            key = try grammar.parseExpressionInCover(
-                parser,
-                Precedence.Assignment,
-            ) orelse
+            // a key is never a pattern, so its strips must not replace the pattern's record
+            const outer_stripped_paren = parser.state.stripped_paren;
+            key = try expressions.parseExpression(parser, Precedence.Assignment, .{}) orelse
                 return null;
+            parser.state.stripped_paren = outer_stripped_paren;
             const ok = try parser.expect(
                 .right_bracket,
                 "Expected ']' after computed property key",
@@ -210,10 +209,7 @@ fn parseCoverProperty(parser: *Parser) Error!?ast.NodeIndex {
 
     if (parser.current_token.tag == .colon) {
         try parser.advance() orelse return null;
-        const value = try grammar.parseExpressionInCover(
-            parser,
-            Precedence.Assignment,
-        ) orelse
+        const value = try expressions.parseExpression(parser, Precedence.Assignment, .{}) orelse
             return null;
         return try parser.tree.addNode(
             .{ .object_property = .{
@@ -251,11 +247,11 @@ fn parseCoverProperty(parser: *Parser) Error!?ast.NodeIndex {
         }
 
         try parser.advance() orelse return null;
-        const default_value = try grammar.parseExpressionInCover(
+        const default_value = try expressions.parseExpression(
             parser,
             Precedence.Assignment,
-        ) orelse
-            return null;
+            .{},
+        ) orelse return null;
 
         const id_ref = try parser.tree.addNode(
             .{ .identifier_reference = .{ .name = key_data.identifier_name.name } },
@@ -271,7 +267,7 @@ fn parseCoverProperty(parser: *Parser) Error!?ast.NodeIndex {
             .{ .start = key_span.start, .end = parser.tree.span(default_value).end },
         );
 
-        parser.state.cover_has_init_name = true;
+        parser.state.cover_init_names += 1;
 
         return try parser.tree.addNode(
             .{ .object_property = .{
@@ -424,16 +420,12 @@ fn parseObjectMethodProperty(
     );
 }
 
-/// Converts an object cover to an ObjectExpression, rejecting CoverInitializedName when `validate` is set.
-pub fn coverToExpression(parser: *Parser, cover: ObjectCover, validate: bool) Error!?ast.NodeIndex {
-    const object_expression = try parser.tree.addNode(
+/// Converts an object cover to an ObjectExpression.
+pub fn coverToExpression(parser: *Parser, cover: ObjectCover) Error!?ast.NodeIndex {
+    return try parser.tree.addNode(
         .{ .object_expression = .{ .properties = cover.properties } },
         .{ .start = cover.start, .end = cover.end },
     );
-
-    if (validate) try grammar.validateNoCoverInitializedSyntax(parser, object_expression);
-
-    return object_expression;
 }
 
 /// Converts an object cover to an ObjectPattern.
@@ -478,14 +470,12 @@ fn toObjectPatternImpl(
         const prop_data = parser.tree.data(prop);
 
         if (prop_data == .spread_element) {
-            if (parser.state.cover_has_trailing_comma == span.start) {
+            if (i == properties.len - 1 and grammar.isFollowedByComma(parser, prop)) {
                 try parser.report(
                     span,
                     "Rest element cannot have a trailing comma in object destructuring.",
                     .{ .help = "Remove the trailing comma after the rest element" },
                 );
-
-                parser.state.cover_has_trailing_comma = null;
             }
 
             if (i != properties.len - 1) {
@@ -541,6 +531,10 @@ fn toObjectPatternImpl(
             continue;
         }
 
+        if (obj_prop.shorthand and grammar.isCoverInitializedName(parser, obj_prop.value)) {
+            std.debug.assert(parser.state.cover_init_names > 0);
+            parser.state.cover_init_names -= 1;
+        }
         try grammar.expressionToPattern(parser, obj_prop.value, context);
 
         parser.tree.setData(prop, .{ .binding_property = .{

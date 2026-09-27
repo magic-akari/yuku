@@ -50,9 +50,10 @@ pub fn parseCover(parser: *Parser) Error!?ParenthesizedCover {
             const spread_start = parser.current_token.span.start;
             try parser.advance() orelse return null;
 
-            const argument = try grammar.parseExpressionInCover(
+            const argument = try expressions.parseExpression(
                 parser,
                 Precedence.Assignment,
+                .{},
             ) orelse return null;
 
             const spread_end = parser.tree.span(argument).end;
@@ -74,7 +75,7 @@ pub fn parseCover(parser: *Parser) Error!?ParenthesizedCover {
             continue;
         }
 
-        const element = try grammar.parseExpressionInCover(parser, Precedence.Assignment) orelse
+        const element = try expressions.parseExpression(parser, Precedence.Assignment, .{}) orelse
             return null;
 
         try parser.scratch_cover.append(parser.allocator(), element);
@@ -128,11 +129,6 @@ pub fn coverToCallExpression(
     cover: ParenthesizedCover,
     callee: ast.NodeIndex,
 ) Error!?ast.NodeIndex {
-    const elements = parser.tree.extra(cover.elements);
-    for (elements) |elem| {
-        try grammar.validateNoCoverInitializedSyntax(parser, elem);
-    }
-
     return try parser.tree.addNode(
         .{ .call_expression = .{
             .callee = callee,
@@ -177,8 +173,6 @@ pub fn coverToParenthesizedExpression(
 
             return null;
         }
-
-        try grammar.validateNoCoverInitializedSyntax(parser, elem);
     }
 
     if (elements.len == 1) {

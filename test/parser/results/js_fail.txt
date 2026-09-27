@@ -6317,14 +6317,12 @@ error: 'import' is reserved and cannot be used as an identifier
    |
 
 ✓ test/parser/suite/js/fail/21864ad33b4951f2.js
-error: A rest element cannot have an initializer
+error: Expected ')' to close parameter list, but found '='
    |
  1 | (async (...x = []) => {
-   |         ^^^^^^^^^
+   |              ^
  2 | });
    |
-   = help: Remove the '= ...' from the rest element.
-
 
 ✓ test/parser/suite/js/fail/21904a018f40db1d.js
 error: Rest element must be the last element
@@ -18058,13 +18056,13 @@ error: Rest element must be the last element
 
 
 ✓ test/parser/suite/js/fail/5f42275e24f1a065.js
-error: Rest parameter must be last formal parameter
+error: Rest parameter may not have a trailing comma
    |
  1 | async (...a,) => {};
-   |        ^^^^
+   |        ^^^^^
  2 | 
    |
-   = help: Remove the trailing comma after the rest parameter
+   = help: Remove the trailing comma after the rest parameter.
 
 
 ✓ test/parser/suite/js/fail/5f5621cca1450878.js
@@ -22269,13 +22267,13 @@ error: Unexpected token '>'
 
 
 ✓ test/parser/suite/js/fail/7686825073d52fda.js
-error: Rest parameter must be last formal parameter
+error: Rest parameter may not have a trailing comma
    |
  1 | (async (...a,) => {
-   |         ^^^^
+   |         ^^^^^
  2 | });
    |
-   = help: Remove the trailing comma after the rest parameter
+   = help: Remove the trailing comma after the rest parameter.
 
 
 ✓ test/parser/suite/js/fail/76b7b9ccebe83795.js
@@ -25767,15 +25765,13 @@ error: Parenthesized expression in assignment pattern must be a simple assignmen
 
 
 ✓ test/parser/suite/js/fail/87df0dacd4eecaaf.js
-error: Unexpected token ')'
+error: 'await' is reserved in an async/module context and cannot be used as a binding identifier
    |
  2 | // await is not allowed in async arrow
  3 | C = class { static { async (await) => {} } };
-   |                                  ^
+   |                             ^^^^^
  4 | 
    |
-   = help: Expected an expression
-
 
 ✓ test/parser/suite/js/fail/87dfd34c1ed7ab04.js
 error: Invalid element in assignment pattern
@@ -27664,13 +27660,11 @@ error: Expected a semicolon or an implicit semicolon after a statement, but foun
 
 
 ✓ test/parser/suite/js/fail/91a2a358ab8c3a4b.js
-error: Unexpected token ')'
+error: 'await' is reserved in an async/module context and cannot be used as a binding identifier
    |
  1 | async(await) => {  }
-   |            ^
+   |       ^^^^^
    |
-   = help: Expected an expression
-
 
 ✓ test/parser/suite/js/fail/91cb0ae4feb7f531.js
 error: Invalid element in assignment pattern
@@ -30749,14 +30743,12 @@ error: Unexpected token '.'
 
 
 ✓ test/parser/suite/js/fail/a376c2cfa2b47aac.js
-error: Unexpected token ')'
+error: 'void' is reserved and cannot be used as a binding identifier
    |
  1 | async (void) => {}
-   |            ^
+   |        ^^^^
  2 | 
    |
-   = help: Expected an expression
-
 
 ✓ test/parser/suite/js/fail/a3781d103249e96d.js
 error: Rest element must be the last element
@@ -32383,12 +32375,12 @@ error: Invalid character at start of identifier
 
 
 ✓ test/parser/suite/js/fail/ab9d14c2ef38f180.js
-error: Shorthand property cannot have a default value in object expression
+error: Parenthesized expression in assignment pattern must be a simple assignment target
    |
  1 | (0, {a = 0}) = 0
-   |      ^^^^^
+   |  ^^^^^^^^^^
    |
-   = help: Use '{ a: a = 1 }' syntax or this is only valid in destructuring patterns.
+   = help: Only identifiers or member expressions (without optional chaining) are allowed inside parentheses in assignment patterns.
 
 
 ✓ test/parser/suite/js/fail/aba603d889bf93e5.js
@@ -46551,13 +46543,13 @@ error: Unexpected token '#x' as property key
 
 
 ✓ test/parser/suite/js/fail/f9933ad628de363a.js
-error: Parentheses are not allowed in this binding pattern
+error: Unexpected token '(' in binding pattern
    |
  1 | var foo = async ((foo)) => {};
-   |                  ^^^^^
+   |                  ^
  2 | 
    |
-   = help: Remove the extra parentheses. Binding patterns can only be identifiers, destructuring patterns, or assignment patterns, not parenthesized expressions.
+   = help: Expected an identifier, array pattern ([a, b]), or object pattern ({a, b}).
 
 
 ✓ test/parser/suite/js/fail/f9a3bf07e65330e1.js

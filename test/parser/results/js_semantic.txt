@@ -27449,15 +27449,13 @@ error: 'super()' is only valid in a constructor of a derived class
 
 
 ✓ test/parser/suite/js/semantic/af126e660a253329.module.js
-error: Unexpected token ')'
+error: 'await' is reserved in an async/module context and cannot be used as an identifier
    |
  1 | async function f() {
  2 |   function g(x = async(await)) {}
-   |                             ^
+   |                        ^^^^^
  3 | }
    |
-   = help: Expected an expression
-
 
 ✓ test/parser/suite/js/semantic/af1d905ed056724f.module.js
 error: 'arguments' is not allowed as a binding identifier in strict mode
@@ -39141,14 +39139,12 @@ error: Identifier 'f' has already been declared
 
 
 ✓ test/parser/suite/js/semantic/f5a9365f81d18ded.module.js
-error: Unexpected token ')'
+error: 'await' is reserved in an async/module context and cannot be used as an identifier
    |
  1 | async (x = function() { async(await) }) => {}
-   |                                    ^
+   |                               ^^^^^
  2 | 
    |
-   = help: Expected an expression
-
 
 ✓ test/parser/suite/js/semantic/f5bebb3f7954d86e.js
 error: 'super()' is only valid in a constructor of a derived class
