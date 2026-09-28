@@ -194,8 +194,7 @@ pub const Symbol = struct {
             break :blk f;
         };
 
-        /// A function in a hoist scope, where TS overloads and sloppy `var`
-        /// merge with it. Lexical scopes use `block_scoped_var` instead.
+        /// A TypeScript function.
         pub const function: Flags = blk: {
             var f = value_space;
             f.function_scoped_var = false;
@@ -735,18 +734,18 @@ pub const SymbolTracker = struct {
                     func.type == .ts_declare_function;
                 const target = if (is_decl) declNameScope(scope) else exprNameScope(scope);
 
-                // annex B 3.2 and ts overloads merge in hoist scopes, not lexical ones
                 const k = scope.get(target).kind;
-                const allow_overload = self.tree.isTs() or
-                    k == .function or
+                const var_like = k == .function or
                     k == .function_body or
                     k == .global or
                     k == .static_block;
 
                 self.pending = .{
                     .flags = .{ .function = true, .ambient = ambient },
-                    .excludes = if (allow_overload)
+                    .excludes = if (self.tree.isTs())
                         Symbol.Excludes.function
+                    else if (var_like)
+                        Symbol.Excludes.function_scoped_var
                     else
                         Symbol.Excludes.block_scoped_var,
                     .scope = target,

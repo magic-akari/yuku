@@ -91,6 +91,13 @@ describe("diagnostics", () => {
     rejects("{ function f(){} function f(){} }", { sourceType: "module", semanticErrors: true });
   });
 
+  test("a class and a function of one name conflict in either order", () => {
+    const semantic: ParseOptions = { sourceType: "script", semanticErrors: true };
+    rejects("class X {} function X(){}", semantic);
+    rejects("function X(){} class X {}", semantic);
+    accepts("class X {} function X(){}", { ...semantic, lang: "ts" });
+  });
+
   test("a closing tag matches its opening tag name across whitespace and comments", () => {
     const jsx: ParseOptions = { lang: "jsx" };
     for (const source of [
