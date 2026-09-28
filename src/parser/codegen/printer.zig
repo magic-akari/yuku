@@ -193,6 +193,7 @@ const Printer = struct {
 
     inline fn writeByte(self: *Self, b: u8) Error!void {
         self.dropPendingKeywordSpace(b);
+        try self.separateToken(b);
         self.at_lead = .none;
         try self.pushByte(b);
         if (comptime source_maps) if (self.sm) |*sm| {
@@ -206,6 +207,7 @@ const Printer = struct {
     inline fn writeStr(self: *Self, s: []const u8) Error!void {
         if (s.len == 0) return;
         self.dropPendingKeywordSpace(s[0]);
+        try self.separateToken(s[0]);
         self.at_lead = .none;
         try self.pushSlice(s);
         if (comptime source_maps) if (self.sm) |*sm| sm.advance(s);
@@ -225,6 +227,13 @@ const Printer = struct {
         try self.pushSlice(s);
         self.literal_end = self.code.items.len;
         if (comptime source_maps) if (self.sm) |*sm| sm.advance(s);
+    }
+
+    inline fn separateToken(self: *Self, next: u8) Error!void {
+        const prev = fuses_after[next];
+        if (prev == 0 or prev != self.lastByte()) return;
+        try self.pushByte(' ');
+        if (comptime source_maps) if (self.sm) |*sm| sm.advance(" ");
     }
 
     // keywords write their trailing space speculatively, compact mode drops it before punctuation
@@ -1032,7 +1041,6 @@ const Printer = struct {
         try self.emit(d.id);
         std.debug.assert(!self.definite_pending);
         if (d.init != .null) {
-            try self.separateBangFromAssign();
             try self.printEq();
             try self.emitExpr(d.init, .{ .prec = Precedence.Assignment, .no_in = self.decl_no_in });
         }
@@ -1069,23 +1077,9 @@ const Printer = struct {
             try self.writeStr(op);
             try self.writeByte(' ');
         } else {
-            // `x! == y` would re-lex as `!==`
-            if (op[0] == '=') try self.separateBangFromAssign();
             try self.space();
             try self.writeStr(op);
             try self.space();
-            // a bare right operand could merge into `++`, `--`, `//` or `<!--`
-            if (!self.pretty() and op.len == 1 and !self.needsParens(e.right, right_ctx)) {
-                switch (op[0]) {
-                    '+', '-', '/' => if (leftmostByteIs(self.tree, e.right, op[0])) {
-                        try self.writeByte(' ');
-                    },
-                    '<' => if (leftmostByteIs(self.tree, e.right, '!')) {
-                        try self.writeByte(' ');
-                    },
-                    else => {},
-                }
-            }
         }
         try self.emitExpr(e.right, right_ctx);
     }
@@ -1123,10 +1117,6 @@ const Printer = struct {
         const op = e.operator.toString();
         try self.writeStr(op);
         if (utils.isWordOp(op)) try self.writeByte(' ');
-        // `+ +x` would print as `++x` and re-lex as a prefix update
-        if (op.len == 1 and (op[0] == '+' or op[0] == '-')) {
-            if (leftmostByteIs(self.tree, e.argument, op[0])) try self.writeByte(' ');
-        }
         try self.emitExpr(e.argument, .{ .prec = Precedence.Unary });
     }
 
@@ -1143,17 +1133,10 @@ const Printer = struct {
 
     fn emit_assignment_expression(self: *Self, e: *const ast.AssignmentExpression, ctx: Ctx) Error!void {
         try self.emitAssignTarget(e.left);
-        try self.separateBangFromAssign();
         try self.space();
         try self.writeStr(e.operator.toString());
         try self.space();
         try self.emitExpr(e.right, .{ .prec = Precedence.Assignment, .no_in = ctx.no_in });
-    }
-
-    // `x!=…` would re-lex the non-null `!` into `!=`
-    inline fn separateBangFromAssign(self: *Self) Error!void {
-        if (self.pretty()) return;
-        if (self.lastByte() == '!') try self.writeByte(' ');
     }
 
     // a bare ts cast as a target needs the parens the parser elided
@@ -1538,7 +1521,6 @@ const Printer = struct {
         try self.emit(p.left);
         if (!self.options.strip) if (p.optional) try self.writeByte('?');
         try self.emit(p.type_annotation);
-        try self.separateBangFromAssign();
         try self.printEq();
         try self.emitValue(p.right);
     }
@@ -2745,41 +2727,6 @@ const Printer = struct {
     }
 };
 
-fn leftmostByteIs(tree: *const Tree, idx: NodeIndex, byte: u8) bool {
-    if (idx == .null) return false;
-    return switch (tree.data(idx)) {
-        .unary_expression => |u| switch (u.operator) {
-            .positive => byte == '+',
-            .negate => byte == '-',
-            .logical_not => byte == '!',
-            .bitwise_not => byte == '~',
-            else => false, // typeof/void/delete start with a letter
-        },
-        .update_expression => |u| if (u.prefix) switch (u.operator) {
-            .increment => byte == '+',
-            .decrement => byte == '-',
-        } else leftmostByteIs(tree, u.argument, byte),
-        .regexp_literal => byte == '/',
-        .member_expression => |m| leftmostByteIs(tree, m.object, byte),
-        .call_expression => |c| leftmostByteIs(tree, c.callee, byte),
-        .chain_expression => |c| leftmostByteIs(tree, c.expression, byte),
-        .tagged_template_expression => |tt| leftmostByteIs(tree, tt.tag, byte),
-        .binary_expression => |b| leftmostByteIs(tree, b.left, byte),
-        .logical_expression => |l| leftmostByteIs(tree, l.left, byte),
-        .conditional_expression => |c| leftmostByteIs(tree, c.@"test", byte),
-        .assignment_expression => |a| leftmostByteIs(tree, a.left, byte),
-        .sequence_expression => |s| blk: {
-            const list = tree.extra(s.expressions);
-            break :blk list.len > 0 and leftmostByteIs(tree, list[0], byte);
-        },
-        .ts_as_expression => |e| leftmostByteIs(tree, e.expression, byte),
-        .ts_satisfies_expression => |e| leftmostByteIs(tree, e.expression, byte),
-        .ts_non_null_expression => |e| leftmostByteIs(tree, e.expression, byte),
-        .ts_instantiation_expression => |e| leftmostByteIs(tree, e.expression, byte),
-        else => false,
-    };
-}
-
 fn fixedString(comptime tag: std.meta.Tag(NodeData)) ?[]const u8 {
     return switch (tag) {
         .super => "super",
@@ -2915,4 +2862,17 @@ const TPrec = struct {
     const intersection: u8 = 3;
     const operator: u8 = 4; // keyof, typeof, readonly, unique
     const primary: u8 = 5;
+};
+
+// the byte each punctuator fuses with, as in `<!` or `!=`
+const fuses_after: [256]u8 = blk: {
+    var t: [256]u8 = @splat(0);
+    t['+'] = '+';
+    t['-'] = '-';
+    t['/'] = '/';
+    t['<'] = '<';
+    t['!'] = '<';
+    t['='] = '!';
+    t['?'] = '?';
+    break :blk t;
 };
