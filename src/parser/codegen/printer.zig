@@ -21,6 +21,8 @@ const Ctx = struct {
     no_call: bool = false,
     // an arrow's type parameters
     no_jsx_tag: bool = false,
+    // a tag reads `strings.raw`, so its quasis print verbatim
+    tagged: bool = false,
 };
 
 // at a leading edge `{`/`function`/`class`/`let[` would misparse as a block or declaration
@@ -1298,7 +1300,7 @@ const Printer = struct {
     ) Error!void {
         try self.emitExpr(e.tag, .{ .prec = Precedence.Call, .no_call = ctx.no_call });
         try self.emit(e.type_arguments);
-        try self.emit(e.quasi);
+        try self.emitExpr(e.quasi, .{ .tagged = true });
     }
 
     fn emit_await_expression(self: *Self, e: *const ast.AwaitExpression) Error!void {
@@ -1453,15 +1455,15 @@ const Printer = struct {
         try self.writeRawStr(self.tree.string(lit.flags));
     }
 
-    fn emit_template_literal(self: *Self, lit: *const ast.TemplateLiteral) Error!void {
-        try self.printTemplate(lit.quasis, lit.expressions);
+    fn emit_template_literal(self: *Self, lit: *const ast.TemplateLiteral, ctx: Ctx) Error!void {
+        try self.printTemplate(lit.quasis, lit.expressions, ctx.tagged);
     }
 
-    fn printTemplate(self: *Self, quasis: IndexRange, subs: IndexRange) Error!void {
+    fn printTemplate(self: *Self, quasis: IndexRange, subs: IndexRange, tagged: bool) Error!void {
         try self.writeByte('`');
         const xs = self.tree.extra(subs);
         for (self.tree.extra(quasis), 0..) |q, i| {
-            try self.emit(q);
+            try self.emitExpr(q, .{ .tagged = tagged });
             if (i < xs.len) {
                 try self.writeRawStr("${");
                 try self.emit(xs[i]);
@@ -1471,9 +1473,22 @@ const Printer = struct {
         try self.writeRawByte('`');
     }
 
-    fn emit_template_element(self: *Self, el: *const ast.TemplateElement) Error!void {
+    fn emit_template_element(self: *Self, el: *const ast.TemplateElement, ctx: Ctx) Error!void {
+        // keep minified output safe to inline in a `<script>` tag
+        const script_safe = self.options.minify and !ctx.tagged;
         const raw = self.tree.string(el.raw);
-        if (raw.len != 0) return self.writeRawStr(raw);
+        if (raw.len != 0) {
+            if (!script_safe) return self.writeRawStr(raw);
+            var start: usize = 0;
+            for (0..raw.len) |i| {
+                const esc = utils.scriptEscape(raw, i) orelse continue;
+                if (i > start) try self.writeRawStr(raw[start..i]);
+                try self.writeRawStr(esc);
+                start = i + 1;
+            }
+            if (start < raw.len) try self.writeRawStr(raw[start..]);
+            return;
+        }
         const s = self.tree.string(el.cooked);
         var i: usize = 0;
         var start: usize = 0;
@@ -1487,8 +1502,7 @@ const Printer = struct {
                 continue;
             }
             const esc: ?[]const u8 = blk: {
-                // keep minified output safe to inline in a `<script>` tag
-                if (self.options.minify) {
+                if (script_safe) {
                     if (utils.scriptEscape(s, i)) |e| break :blk e;
                 }
                 break :blk switch (c) {
@@ -2141,7 +2155,7 @@ const Printer = struct {
     }
 
     fn emit_ts_template_literal_type(self: *Self, t: *const ast.TSTemplateLiteralType) Error!void {
-        try self.printTemplate(t.quasis, t.types);
+        try self.printTemplate(t.quasis, t.types, false);
     }
 
     fn emitType(self: *Self, idx: NodeIndex, floor: u8) Error!void {
