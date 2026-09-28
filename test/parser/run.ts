@@ -56,6 +56,7 @@ const suites: TestSuite[] = [
   },
   { path: `${SUITE_DIR}/jsx/pass`, expect: "snapshot", lang: ["jsx"], options: { semanticErrors: true } },
   { path: `${SUITE_DIR}/jsx/fail`, expect: "fail", lang: ["jsx"] },
+  { path: `${SUITE_DIR}/jsx/semantic`, expect: "fail", lang: ["jsx"], options: { semanticErrors: true } },
   { path: `${SUITE_DIR}/ts/pass`, expect: "snapshot", lang: ["ts", "tsx", "dts"], options: { semanticErrors: true } },
   { path: `${SUITE_DIR}/ts/semantic`, expect: "fail", lang: ["ts", "tsx", "dts"], options: { semanticErrors: true } },
   { path: `${MISC_DIR}/jsx`, expect: "snapshot", lang: ["jsx"], recursive: false, allowErrors: true, autoSnapshot: true },
@@ -340,6 +341,6 @@ for (const result of results) {
 
 console.log(`Results saved to ${RESULTS_DIR}/\n`);
 
-if (isCI && totalFailed > 0) {
+if (totalFailed > 0) {
   process.exit(1);
 }
