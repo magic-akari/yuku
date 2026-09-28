@@ -84,6 +84,7 @@ pub const regressions = [_][]const u8{
     "0x; let a = 1;", // a lexical error in the first token dropped the rest of the file
     ("typeof " ** 300) ++ "function f() { switch (a) { case 1: b } }", // past NodePath capacity
     "type T<U> = U extends string ? ? & B : C0", // compact printed `??`
+    "f<T> == x", // compact fused the type argument closer into `>=`
 };
 
 // a runaway allocation panics attributably instead of a silent oom kill

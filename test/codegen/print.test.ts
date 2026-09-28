@@ -164,3 +164,9 @@ test("an arrow's lone type parameter keeps a trailing comma", () => {
     function f<T>() {}"
   `);
 });
+
+test("compact output keeps a type argument closer apart from `>` and `=` operators", () => {
+  expect(
+    gen(`f<T> == x;\nf<T> >= x;\nf<T> >>> x;\na.b<T> === c;`, { format: "compact" }),
+  ).toMatchInlineSnapshot(`"f<T> ==x;f<T> >=x;f<T> >>>x;a.b<T> ===c"`);
+});

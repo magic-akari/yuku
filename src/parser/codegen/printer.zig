@@ -1105,6 +1105,8 @@ const Printer = struct {
             try self.writeByte(' ');
         } else {
             try self.space();
+            // `f<T>==x` would re-lex the type argument closer into `>=`
+            if (self.lastByte() == '>' and (op[0] == '>' or op[0] == '=')) try self.writeByte(' ');
             try self.writeStr(op);
             try self.space();
         }
