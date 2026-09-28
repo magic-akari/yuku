@@ -95,7 +95,9 @@ pub const Checker = struct {
             const existing = ctx.symbols.symbol(sym);
             const merging_with_ambient = flags.ambient or existing.flags.ambient;
 
-            if (!merging_with_ambient and existing.flags.intersects(excludes)) {
+            if (!merging_with_ambient and existing.flags.intersects(excludes) and
+                !isAnnexBDuplicate(ctx, node_index, sym))
+            {
                 try self.reportRedeclaration(id, node_index, sym, existing, ctx);
                 return;
             }
@@ -1384,6 +1386,20 @@ pub const Checker = struct {
             }
         }
         return null;
+    }
+
+    fn isAnnexBDuplicate(ctx: *SemanticCtx, node: ast.NodeIndex, existing: semantic.SymbolId) bool {
+        if (ctx.scope.get(ctx.symbols.pending.scope).flags.strict) return false;
+        return isPlainFunction(ctx, node) and
+            isPlainFunction(ctx, ctx.symbols.firstDeclOf(existing));
+    }
+
+    fn isPlainFunction(ctx: *SemanticCtx, binding: ast.NodeIndex) bool {
+        const parent = ctx.parentOf(binding) orelse return false;
+        return switch (ctx.tree.data(parent)) {
+            .function => |f| !f.async and !f.generator,
+            else => false,
+        };
     }
 
     fn getModuleExportName(tree: *const ast.Tree, node: ast.NodeIndex) []const u8 {

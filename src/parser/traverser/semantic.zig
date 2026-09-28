@@ -47,6 +47,12 @@ pub const Ctx = struct {
         return self.type_position_depth > 0;
     }
 
+    /// The parent of `node`, or `null` at the root.
+    pub inline fn parentOf(self: *const Ctx, node: ast.NodeIndex) ?ast.NodeIndex {
+        const parent = self.node_parents[@intFromEnum(node)];
+        return if (parent != .null) parent else null;
+    }
+
     /// True when the walker is currently inside a TS namespace body.
     pub inline fn inTsNamespace(self: *const Ctx) bool {
         var it = self.scope.ancestors(self.scope.current);
