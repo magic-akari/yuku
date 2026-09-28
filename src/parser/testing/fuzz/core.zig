@@ -137,6 +137,7 @@ pub const regressions = [_][]const u8{
     "class C{async get x(){await 0}}", // async getter whose async the printer dropped
     "0x; let a = 1;", // a lexical error in the first token dropped the rest of the file
     ("typeof " ** 300) ++ "function f() { switch (a) { case 1: b } }", // past NodePath capacity
+    "type T<U> = U extends string ? ? & B : C0", // compact printed `??`
 };
 
 // violations panic so the driver can dump the reproducer
@@ -164,7 +165,7 @@ pub fn check(gpa: Allocator, src: []const u8, mode: Mode) void {
     };
     checkSpans(&tree, src);
 
-    if (parse_clean) checkRoundTrip(a, &tree, mode, src);
+    if (parse_clean) checkRoundTrip(a, mode, src);
 }
 
 fn checkSpans(tree: *const ast.Tree, src: []const u8) void {
@@ -220,24 +221,36 @@ fn checkTokens(tree: *const ast.Tree, src: []const u8) void {
     );
 }
 
-fn checkRoundTrip(gpa: Allocator, tree: *ast.Tree, mode: Mode, src: []const u8) void {
-    var res = codegen.generate(gpa, tree, .{}) catch |e| switch (e) {
-        error.OutOfMemory => return,
-    };
-    defer res.deinit(gpa);
-
-    var reparsed = parser.parse(gpa, res.code, .{
+fn checkRoundTrip(gpa: Allocator, mode: Mode, src: []const u8) void {
+    var tree = parser.parse(gpa, src, .{
         .lang = mode.lang,
         .source_type = mode.source_type,
+        .preserve_parens = false,
     }) catch |e| switch (e) {
         error.OutOfMemory => return,
     };
-    defer reparsed.deinit();
+    defer tree.deinit();
 
-    if (reparsed.hasErrors()) std.debug.panic(
-        "round trip: a clean parse printed to output that fails to reparse\n--- src ---\n{s}\n--- printed ---\n{s}",
-        .{ src, res.code },
-    );
+    for ([_]codegen.Format{ .pretty, .compact }) |format| {
+        var res = codegen.generate(gpa, &tree, .{ .format = format }) catch |e| switch (e) {
+            error.OutOfMemory => return,
+        };
+        defer res.deinit(gpa);
+
+        var reparsed = parser.parse(gpa, res.code, .{
+            .lang = mode.lang,
+            .source_type = mode.source_type,
+        }) catch |e| switch (e) {
+            error.OutOfMemory => return,
+        };
+        defer reparsed.deinit();
+
+        if (reparsed.hasErrors()) std.debug.panic(
+            "round trip: a clean parse printed to output that fails to reparse\n" ++
+                "--- src ---\n{s}\n--- printed ---\n{s}",
+            .{ src, res.code },
+        );
+    }
 }
 
 // every allocation failure point must yield error.OutOfMemory or success, never a panic
