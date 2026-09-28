@@ -201,11 +201,6 @@ pub const State = struct {
         self.out.items.len += @intFromPtr(dst) - @intFromPtr(base);
     }
 
-    /// The most recently recorded segment, if any.
-    pub fn lastMapping(self: *const State) ?Segment {
-        return if (self.has_pending) self.pending else null;
-    }
-
     pub fn snapshot(self: *const State) Snapshot {
         return .{
             .out_len = @intCast(self.out.items.len),

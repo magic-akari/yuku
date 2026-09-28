@@ -135,6 +135,7 @@ const Printer = struct {
     // cleared by the first real token, preserved across comments
     at_lead: Lead = .none,
     literal_end: usize = 0,
+    map_start: ?u32 = null,
     // a bare string here would reparse as a directive
     in_prologue: bool = false,
     // `in` forbidden in the current declarator init (a `for` head)
@@ -197,6 +198,7 @@ const Printer = struct {
         self.at_lead = .none;
         try self.pushByte(b);
         if (comptime source_maps) if (self.sm) |*sm| {
+            try self.placeMapping(sm);
             if (b == '\n') {
                 sm.gen_line += 1;
                 sm.gen_col = 0;
@@ -210,7 +212,10 @@ const Printer = struct {
         try self.separateToken(s[0]);
         self.at_lead = .none;
         try self.pushSlice(s);
-        if (comptime source_maps) if (self.sm) |*sm| sm.advance(s);
+        if (comptime source_maps) if (self.sm) |*sm| {
+            try self.placeMapping(sm);
+            sm.advance(s);
+        };
     }
 
     // literal text is opaque to the keyword-space drop
@@ -218,7 +223,10 @@ const Printer = struct {
         self.at_lead = .none;
         try self.pushByte(b);
         self.literal_end = self.code.items.len;
-        if (comptime source_maps) if (self.sm) |*sm| sm.advance(&.{b});
+        if (comptime source_maps) if (self.sm) |*sm| {
+            try self.placeMapping(sm);
+            sm.advance(&.{b});
+        };
     }
 
     inline fn writeRawStr(self: *Self, s: []const u8) Error!void {
@@ -226,7 +234,10 @@ const Printer = struct {
         self.at_lead = .none;
         try self.pushSlice(s);
         self.literal_end = self.code.items.len;
-        if (comptime source_maps) if (self.sm) |*sm| sm.advance(s);
+        if (comptime source_maps) if (self.sm) |*sm| {
+            try self.placeMapping(sm);
+            sm.advance(s);
+        };
     }
 
     inline fn separateToken(self: *Self, next: u8) Error!void {
@@ -306,18 +317,21 @@ const Printer = struct {
 
     const Cursor = struct {
         code: usize,
+        map_start: ?u32,
         sm: ?sourcemap.State.Snapshot,
     };
 
     inline fn cursor(self: *const Self) Cursor {
         return .{
             .code = self.code.items.len,
+            .map_start = self.map_start,
             .sm = if (comptime source_maps) (if (self.sm) |sm| sm.snapshot() else null) else null,
         };
     }
 
     inline fn restore(self: *Self, c: Cursor) void {
         self.rewindTo(c.code);
+        self.map_start = c.map_start;
         if (comptime source_maps) if (c.sm) |snap| if (self.sm) |*sm| sm.restore(snap);
     }
 
@@ -501,7 +515,8 @@ const Printer = struct {
     }
 
     inline fn emitNode(self: *Self, idx: NodeIndex, ctx: Ctx) Error!void {
-        if (comptime source_maps) if (self.sm != null) try self.recordMapping(idx);
+        @setEvalBranchQuota(10_000);
+        if (comptime source_maps) if (self.sm != null) self.recordMapping(idx);
 
         switch (self.node_data[@intFromEnum(idx)]) {
             inline else => |*node, tag| {
@@ -644,13 +659,16 @@ const Printer = struct {
         };
     }
 
-    fn recordMapping(self: *Self, idx: NodeIndex) Error!void {
-        const sm = &self.sm.?;
+    fn recordMapping(self: *Self, idx: NodeIndex) void {
         const span = self.tree.span(idx);
         if (span.start == 0 and span.end == 0) return; // synthetic
+        self.map_start = span.start;
+    }
 
-        const orig = sm.resolve(span.start);
-
+    inline fn placeMapping(self: *Self, sm: *sourcemap.State) Error!void {
+        const start = self.map_start orelse return;
+        self.map_start = null;
+        const orig = sm.resolve(start);
         try sm.record(self.allocator, orig.line, orig.col);
     }
 
@@ -1834,7 +1852,7 @@ const Printer = struct {
         const list = self.tree.extra(decs);
         if (list.len == 0) return;
         // decorator content overwrites the parent's mapping, so it is re-recorded after
-        const carry: ?sourcemap.Segment = if (comptime source_maps) (if (self.sm) |*sm| sm.lastMapping() else null) else null;
+        const carry = self.map_start;
         for (list, 0..) |d, i| {
             try self.emit(d);
             // `@a.b class` would fuse to `@a.bclass` without a separator
@@ -1844,9 +1862,7 @@ const Printer = struct {
                 try self.writeByte(' ');
             }
         }
-        if (comptime source_maps) if (carry) |c| if (self.sm) |*sm| {
-            try sm.record(self.allocator, c.orig_line, c.orig_col);
-        };
+        self.map_start = carry;
     }
 
     fn emit_import_declaration(self: *Self, d: *const ast.ImportDeclaration) Error!void {
