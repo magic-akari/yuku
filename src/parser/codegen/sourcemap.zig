@@ -32,6 +32,8 @@ pub const Options = struct {
     source_root: ?[]const u8 = null,
     /// When set, embedded as the single entry of `sourcesContent`.
     sources_content: ?[]const u8 = null,
+    /// Whether spans count UTF-16 code units instead of UTF-8 bytes.
+    utf16_offsets: bool = false,
 };
 
 /// A zero-based source position, with `col` counted in UTF-16 code units.
@@ -88,7 +90,7 @@ pub const State = struct {
 
     /// Resolves a source offset to a zero-based `(line, col)` pair.
     pub fn resolve(self: *State, offset: u32) LineCol {
-        return self.cursor.resolve(self.source, offset);
+        return self.cursor.resolve(self.source, offset, self.options.utf16_offsets);
     }
 
     /// Advances the generated position over `bytes` just written.
@@ -260,8 +262,8 @@ pub const State = struct {
     }
 };
 
-/// Maps UTF-16 offsets in a UTF-8 source to zero-based `(line, col)`, scanning
-/// incrementally from the last position.
+/// Maps UTF-8 or UTF-16 offsets in a UTF-8 source to zero-based `(line, col)`,
+/// scanning incrementally from the last position.
 pub const SourceCursor = struct {
     byte: u32 = 0,
     utf16: u32 = 0,
@@ -271,10 +273,11 @@ pub const SourceCursor = struct {
     pub fn resolve(
         self: *SourceCursor,
         source: []const u8,
-        target_utf16: u32,
+        target: u32,
+        utf16: bool,
     ) LineCol {
-        if (target_utf16 >= self.utf16) {
-            while (self.utf16 < target_utf16 and self.byte < source.len) {
+        if (target >= self.offset(utf16)) {
+            while (self.offset(utf16) < target and self.byte < source.len) {
                 const brk = util.Utf.lineBreakLen(source, self.byte);
                 if (brk > 0) {
                     self.line += 1;
@@ -288,7 +291,7 @@ pub const SourceCursor = struct {
                 }
             }
         } else {
-            while (self.utf16 > target_utf16) {
+            while (self.offset(utf16) > target) {
                 self.byte -= 1;
                 while (self.byte > 0 and isContinuation(source[self.byte])) self.byte -= 1;
                 const lead = source[self.byte];
@@ -303,6 +306,10 @@ pub const SourceCursor = struct {
             self.line_start_utf16 = self.lineStart(source);
         }
         return .{ .line = self.line, .col = self.utf16 - self.line_start_utf16 };
+    }
+
+    inline fn offset(self: *const SourceCursor, utf16: bool) u32 {
+        return if (utf16) self.utf16 else self.byte;
     }
 
     fn lineStart(self: *const SourceCursor, source: []const u8) u32 {
@@ -341,4 +348,12 @@ inline fn writeVlq(dst: [*]u8, v: i32) [*]u8 {
         p += 1;
         if (bits == 0) return p;
     }
+}
+
+test "a cursor resolves byte and utf-16 offsets past non-ascii text" {
+    const source = "\"日😀\"; foo;";
+    var bytes: SourceCursor = .{};
+    try std.testing.expectEqual(LineCol{ .line = 0, .col = 7 }, bytes.resolve(source, 11, false));
+    var units: SourceCursor = .{};
+    try std.testing.expectEqual(LineCol{ .line = 0, .col = 7 }, units.resolve(source, 7, true));
 }
