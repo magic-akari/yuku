@@ -78,6 +78,14 @@ const suites: TestSuite[] = [
     options: { preserveParens: false },
   },
   {
+    path: `${MISC_DIR}/js/semantic`,
+    expect: "snapshot",
+    lang: ["js"],
+    allowErrors: true,
+    autoSnapshot: true,
+    options: { semanticErrors: true },
+  },
+  {
     path: `${MISC_DIR}/js/commonjs`,
     expect: "snapshot",
     lang: ["js"],

@@ -69,35 +69,6 @@ describe("diagnostics", () => {
     accepts("for (var a = 1 in b);");
   });
 
-  test("a sloppy block may repeat a plain function declaration", () => {
-    const semantic: ParseOptions = { sourceType: "script", semanticErrors: true };
-    for (const source of [
-      "{ function f(){} function f(){} }",
-      "switch (0) { case 1: function f(){} default: function f(){} }",
-      "{ l: function f(){} function f(){} }",
-      "try {} catch (e) { function f(){} function f(){} }",
-      "{ function f(){ 'use strict' } function f(){} }",
-    ]) accepts(source, semantic);
-    for (const source of [
-      "'use strict'; { function f(){} function f(){} }",
-      "function g(){ 'use strict'; { function f(){} function f(){} } }",
-      "{ async function f(){} function f(){} }",
-      "{ function f(){} function* f(){} }",
-      "{ function f(){} let f; }",
-      "{ var f; function f(){} }",
-      "{ function f(){} class f {} }",
-      "try {} catch (f) { function f(){} }",
-    ]) rejects(source, semantic);
-    rejects("{ function f(){} function f(){} }", { sourceType: "module", semanticErrors: true });
-  });
-
-  test("a class and a function of one name conflict in either order", () => {
-    const semantic: ParseOptions = { sourceType: "script", semanticErrors: true };
-    rejects("class X {} function X(){}", semantic);
-    rejects("function X(){} class X {}", semantic);
-    accepts("class X {} function X(){}", { ...semantic, lang: "ts" });
-  });
-
   test("a closing tag matches its opening tag name across whitespace and comments", () => {
     const jsx: ParseOptions = { lang: "jsx" };
     for (const source of [
