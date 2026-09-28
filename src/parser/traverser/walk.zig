@@ -116,6 +116,7 @@ fn walkStructFields(
 ///   4. dispatch to inner visitor      - user's exit hooks fire
 ///   5. `ctx.exit(data)`               - after user hooks (pop path/scopes)
 pub fn Layer(comptime C: type, comptime V: type) type {
+    comptime validateHooks(V);
     return struct {
         inner: *V,
 
