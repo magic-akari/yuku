@@ -799,28 +799,28 @@ const Printer = struct {
 
     fn emit_return_statement(self: *Self, s: *const ast.ReturnStatement) Error!void {
         try self.writeStr("return");
-        try self.emitRestrictedArg(s.argument, Precedence.Lowest);
+        try self.emitRestrictedArg(s.argument, .{});
         try self.softSemi();
     }
 
     fn emit_throw_statement(self: *Self, s: *const ast.ThrowStatement) Error!void {
         try self.writeStr("throw");
-        try self.emitRestrictedArg(s.argument, Precedence.Lowest);
+        try self.emitRestrictedArg(s.argument, .{});
         try self.softSemi();
     }
 
     // asi would sever a `return`/`throw`/`yield` operand a comment broke onto its own line
-    fn emitRestrictedArg(self: *Self, idx: NodeIndex, prec: u8) Error!void {
+    fn emitRestrictedArg(self: *Self, idx: NodeIndex, ctx: Ctx) Error!void {
         if (idx == .null) return;
         const cur = self.cursor();
         const at = self.mark();
         try self.writeByte(' ');
-        try self.emitExpr(idx, .{ .prec = prec });
+        try self.emitExpr(idx, ctx);
         // the break stripped the separator space, leaving a leading newline
         if (self.code.items[at] == '\n') {
             self.restore(cur);
             try self.writeStr(" (");
-            try self.emitExpr(idx, .{ .prec = prec });
+            try self.emitExpr(idx, .{});
             try self.writeByte(')');
         }
     }
@@ -1303,10 +1303,13 @@ const Printer = struct {
         try self.emitExpr(e.argument, .{ .prec = Precedence.Unary });
     }
 
-    fn emit_yield_expression(self: *Self, e: *const ast.YieldExpression) Error!void {
+    fn emit_yield_expression(self: *Self, e: *const ast.YieldExpression, ctx: Ctx) Error!void {
         try self.writeStr("yield");
         if (e.delegate) try self.writeByte('*');
-        try self.emitRestrictedArg(e.argument, Precedence.Assignment);
+        try self.emitRestrictedArg(e.argument, .{
+            .prec = Precedence.Assignment,
+            .no_in = ctx.no_in,
+        });
     }
 
     fn emit_meta_property(self: *Self, p: *const ast.MetaProperty) Error!void {
@@ -1669,7 +1672,11 @@ const Printer = struct {
         }
     }
 
-    fn emit_arrow_function_expression(self: *Self, a: *const ast.ArrowFunctionExpression) Error!void {
+    fn emit_arrow_function_expression(
+        self: *Self,
+        a: *const ast.ArrowFunctionExpression,
+        ctx: Ctx,
+    ) Error!void {
         if (a.async) try self.writeStr("async ");
         try self.emitExpr(a.type_parameters, .{ .no_jsx_tag = true });
         try self.emit(a.params);
@@ -1679,7 +1686,7 @@ const Printer = struct {
         try self.space();
         if (a.expression) {
             self.at_lead = .arrow;
-            try self.emitExpr(a.body, .{ .prec = Precedence.Assignment });
+            try self.emitExpr(a.body, .{ .prec = Precedence.Assignment, .no_in = ctx.no_in });
         } else {
             try self.emit(a.body);
         }

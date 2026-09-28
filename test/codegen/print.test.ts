@@ -130,6 +130,23 @@ test("an export default value keeps the parens that stop it reading as a declara
   `);
 });
 
+test("an `in` inside a for-init arrow body or yield keeps its parens", () => {
+  const source = [
+    "for (let f = () => (a in b); ; );",
+    "for (g = async (x) => (a in b); ; );",
+    "function* h() {",
+    "  for (let x = yield (a in b); ; );",
+    "}",
+  ].join("\n");
+  expect(gen(source, {}, "input.js", { preserveParens: false })).toMatchInlineSnapshot(`
+    "for (let f = () => (a in b);;) ;
+    for (g = async (x) => (a in b);;) ;
+    function* h() {
+      for (let x = yield (a in b);;) ;
+    }"
+  `);
+});
+
 test("an arrow's lone type parameter keeps a trailing comma", () => {
   expect(
     gen(`<T>(x: T) => x;\n<T = U>() => 0;\n<T extends U>() => 0;\nfunction f<T>() {}`),
