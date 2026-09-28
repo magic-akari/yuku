@@ -140,7 +140,12 @@ pub const State = struct {
 
     /// Records a mapping at the current generated position. A later record at
     /// the same generated position replaces this one.
-    pub fn record(self: *State, allocator: Allocator, orig_line: u32, orig_col: u32) Allocator.Error!void {
+    pub fn record(
+        self: *State,
+        allocator: Allocator,
+        orig_line: u32,
+        orig_col: u32,
+    ) Allocator.Error!void {
         if (self.has_pending and
             self.pending.gen_line == self.gen_line and
             self.pending.gen_col == self.gen_col)

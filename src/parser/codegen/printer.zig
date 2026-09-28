@@ -13,21 +13,6 @@ const NodeData = ast.NodeData;
 const IndexRange = ast.IndexRange;
 const Precedence = @import("../token.zig").Precedence;
 
-const Ctx = struct {
-    prec: u8 = Precedence.Lowest,
-    // in a `for` head a top-level `in` would read as `for (a in b)`
-    no_in: bool = false,
-    // in a `new` callee a call would bind to the `new`
-    no_call: bool = false,
-    // an arrow's type parameters
-    no_jsx_tag: bool = false,
-    // a tag reads `strings.raw`, so its quasis print verbatim
-    tagged: bool = false,
-};
-
-// at a leading edge `{`/`function`/`class`/`let[` would misparse as a block or declaration
-const Lead = enum { none, stmt, arrow, export_default };
-
 pub const SourceMap = sourcemap.SourceMap;
 pub const SourceMapOptions = sourcemap.Options;
 
@@ -103,19 +88,35 @@ pub fn generate(allocator: Allocator, tree: *Tree, options: Options) Error!Resul
     std.debug.assert(tree.root != .null);
     var p = try Printer.init(allocator, tree, options);
     defer p.deinit();
-    try p.printRoot();
+    try p.emit(tree.root);
 
     const code = try p.code.toOwnedSlice(allocator);
     errdefer allocator.free(code);
     const errors = try p.errors.toOwnedSlice(allocator);
     errdefer allocator.free(errors);
-    const map = if (comptime source_maps) (if (p.sm) |*sm| try sm.build(allocator) else null) else null;
+    const map = if (comptime source_maps)
+        (if (p.sm) |*sm| try sm.build(allocator) else null)
+    else
+        null;
     return .{ .code = code, .errors = errors, .map = map };
 }
 
-const Printer = struct {
-    const Self = @This();
+const Ctx = struct {
+    prec: u8 = Precedence.Lowest,
+    // in a `for` head a top-level `in` would read as `for (a in b)`
+    no_in: bool = false,
+    // in a `new` callee a call would bind to the `new`
+    no_call: bool = false,
+    // an arrow's type parameters
+    no_jsx_tag: bool = false,
+    // a tag reads `strings.raw`, so its quasis print verbatim
+    tagged: bool = false,
+};
 
+// at a leading edge `{`/`function`/`class`/`let[` would misparse as a block or declaration
+const Lead = enum { none, stmt, arrow, export_default };
+
+const Printer = struct {
     tree: *Tree,
     node_data: []const NodeData,
     code: std.ArrayList(u8) = .empty,
@@ -143,6 +144,13 @@ const Printer = struct {
     // `in` forbidden in the current declarator init (a `for` head)
     decl_no_in: bool = false,
 
+    const Cursor = struct {
+        code: usize,
+        map_start: ?u32,
+        sm: ?sourcemap.State.Snapshot,
+    };
+    const Self = @This();
+
     fn init(allocator: Allocator, tree: *Tree, options: Options) Error!Self {
         var p = Self{
             .tree = tree,
@@ -151,6 +159,7 @@ const Printer = struct {
             .allocator = allocator,
         };
         try p.code.ensureTotalCapacity(allocator, tree.source.len);
+        errdefer p.code.deinit(allocator);
 
         if (comptime source_maps) if (options.source_map) |sm_opts| {
             if (sm_opts.source != null) {
@@ -288,7 +297,12 @@ const Printer = struct {
         }
     }
 
-    fn printBindingSuffix(self: *Self, optional: bool, definite: bool, annotation: NodeIndex) Error!void {
+    fn printBindingSuffix(
+        self: *Self,
+        optional: bool,
+        definite: bool,
+        annotation: NodeIndex,
+    ) Error!void {
         if (!self.options.strip) if (optional) try self.writeByte('?');
         if (definite) try self.writeByte('!');
         try self.emit(annotation);
@@ -303,25 +317,12 @@ const Printer = struct {
     }
 
     fn newline(self: *Self) Error!void {
-        if (!self.pretty()) return;
-        try self.breakLine();
+        if (self.pretty()) try self.breakLine();
     }
 
     inline fn mark(self: *const Self) usize {
         return self.code.items.len;
     }
-
-    inline fn rewindTo(self: *Self, pos: usize) void {
-        std.debug.assert(pos <= self.code.items.len);
-        self.code.shrinkRetainingCapacity(pos);
-        if (self.literal_end > pos) self.literal_end = 0;
-    }
-
-    const Cursor = struct {
-        code: usize,
-        map_start: ?u32,
-        sm: ?sourcemap.State.Snapshot,
-    };
 
     inline fn cursor(self: *const Self) Cursor {
         return .{
@@ -332,14 +333,16 @@ const Printer = struct {
     }
 
     inline fn restore(self: *Self, c: Cursor) void {
-        self.rewindTo(c.code);
+        std.debug.assert(c.code <= self.code.items.len);
+        self.code.shrinkRetainingCapacity(c.code);
+        if (self.literal_end > c.code) self.literal_end = 0;
         self.map_start = c.map_start;
         if (comptime source_maps) if (c.sm) |snap| if (self.sm) |*sm| sm.restore(snap);
     }
 
     fn tryEmit(self: *Self, idx: NodeIndex) Error!bool {
         const start = self.mark();
-        const tail: u8 = if (start > 0) self.code.items[start - 1] else 0;
+        const tail = self.lastByte();
         try self.emit(idx);
         if (self.code.items.len > start) return true;
         return start > 0 and self.code.items[start - 1] != tail;
@@ -350,16 +353,11 @@ const Printer = struct {
         if (!try self.tryEmit(idx)) try self.writeByte(';');
     }
 
-    fn printRoot(self: *Self) Error!void {
-        try self.emit(self.tree.root);
-    }
-
     fn emit(self: *Self, idx: NodeIndex) Error!void {
         return self.emitExpr(idx, .{});
     }
 
-    /// Emits `idx`, parenthesizing it when its slot `ctx` requires. The one
-    /// place parentheses are decided for expressions.
+    // the one place expression parentheses are decided
     fn emitExpr(self: *Self, idx: NodeIndex, ctx: Ctx) Error!void {
         if (idx == .null) return;
 
@@ -470,7 +468,9 @@ const Printer = struct {
         if (self.at_lead == .stmt or self.at_lead == .arrow) {
             switch (data) {
                 .object_expression => return true,
-                .assignment_expression => |a| if (self.nodeData(a.left) == .object_pattern) return true,
+                .assignment_expression => |a| {
+                    if (self.nodeData(a.left) == .object_pattern) return true;
+                },
                 else => {},
             }
         }
@@ -479,7 +479,9 @@ const Printer = struct {
                 .function => |f| if (f.type == .function_expression or
                     f.type == .ts_empty_body_function_expression) return true,
                 .class => |c| if (c.type == .class_expression) return true,
-                .member_expression => |m| if (m.computed and self.isLetIdentifier(m.object)) return true,
+                .member_expression => |m| {
+                    if (m.computed and self.isNamedReference(m.object, "let")) return true;
+                },
                 else => {},
             }
         }
@@ -496,9 +498,9 @@ const Printer = struct {
         return self.precedenceOf(idx) < ctx.prec;
     }
 
-    fn isLetIdentifier(self: *const Self, idx: NodeIndex) bool {
+    fn isNamedReference(self: *const Self, idx: NodeIndex, name: []const u8) bool {
         return switch (self.nodeData(idx)) {
-            .identifier_reference => |id| std.mem.eql(u8, self.tree.string(id.name), "let"),
+            .identifier_reference => |id| std.mem.eql(u8, self.tree.string(id.name), name),
             else => false,
         };
     }
@@ -546,7 +548,8 @@ const Printer = struct {
         return switch (self.options.comments) {
             .none => false,
             .all => true,
-            .some => c.type == .block and utils.isSignificantBlockComment(self.tree.string(c.value)),
+            .some => c.type == .block and
+                utils.isSignificantBlockComment(self.tree.string(c.value)),
             .line => c.type == .line,
             .block => c.type == .block,
         };
@@ -845,11 +848,10 @@ const Printer = struct {
     fn emitRestrictedArg(self: *Self, idx: NodeIndex, ctx: Ctx) Error!void {
         if (idx == .null) return;
         const cur = self.cursor();
-        const at = self.mark();
         try self.writeByte(' ');
         try self.emitExpr(idx, ctx);
         // the break stripped the separator space, leaving a leading newline
-        if (self.code.items[at] == '\n') {
+        if (self.code.items[cur.code] == '\n') {
             self.restore(cur);
             try self.writeStr(" (");
             try self.emitExpr(idx, .{});
@@ -1066,21 +1068,27 @@ const Printer = struct {
         }
     }
 
-    fn emit_sequence_expression(self: *Self, e: *const ast.SequenceExpression, ctx: Ctx) Error!void {
+    fn emit_sequence_expression(
+        self: *Self,
+        e: *const ast.SequenceExpression,
+        ctx: Ctx,
+    ) Error!void {
         for (self.tree.extra(e.expressions), 0..) |x, i| {
             if (i > 0) try self.comma();
             try self.emitExpr(x, .{ .prec = Precedence.Assignment, .no_in = ctx.no_in });
         }
     }
 
-    fn emit_parenthesized_expression(self: *Self, e: *const ast.ParenthesizedExpression) Error!void {
+    fn emit_parenthesized_expression(
+        self: *Self,
+        e: *const ast.ParenthesizedExpression,
+    ) Error!void {
         try self.writeByte('(');
         try self.emit(e.expression);
         try self.writeByte(')');
     }
 
     fn emit_binary_expression(self: *Self, e: *const ast.BinaryExpression, ctx: Ctx) Error!void {
-        const no_in = ctx.no_in;
         const tok = e.operator.toToken();
         const op = tok.toString().?;
         const p: u8 = tok.precedence();
@@ -1090,8 +1098,7 @@ const Printer = struct {
         // `x as T < y` would re-lex as the type arguments `T<y>`
         if (op[0] == '<' and endsWithTsCast(self.tree, e.left)) left_min = Precedence.Grouping;
 
-        try self.emitExpr(e.left, .{ .prec = left_min, .no_in = no_in });
-        const right_ctx = Ctx{ .prec = right_min, .no_in = no_in };
+        try self.emitExpr(e.left, .{ .prec = left_min, .no_in = ctx.no_in });
         if (utils.isWordOp(op)) {
             try self.writeByte(' ');
             try self.writeStr(op);
@@ -1101,28 +1108,37 @@ const Printer = struct {
             try self.writeStr(op);
             try self.space();
         }
-        try self.emitExpr(e.right, right_ctx);
+        try self.emitExpr(e.right, .{ .prec = right_min, .no_in = ctx.no_in });
     }
 
     fn emit_logical_expression(self: *Self, e: *const ast.LogicalExpression, ctx: Ctx) Error!void {
-        const no_in = ctx.no_in;
         const tok = e.operator.toToken();
         const p: u8 = tok.precedence();
-        try self.emitLogicalOperand(e.left, p, e.operator, no_in);
+        try self.emitLogicalOperand(e.left, p, e.operator, ctx.no_in);
         try self.space();
         try self.writeStr(tok.toString().?);
         try self.space();
-        try self.emitLogicalOperand(e.right, p + 1, e.operator, no_in);
+        try self.emitLogicalOperand(e.right, p + 1, e.operator, ctx.no_in);
     }
 
-    fn emitLogicalOperand(self: *Self, child: NodeIndex, min: u8, parent: ast.LogicalOperator, no_in: bool) Error!void {
-        const prec = if (logicalMismatch(self.tree, parent, self.stripped(child))) Precedence.Grouping else min;
+    fn emitLogicalOperand(
+        self: *Self,
+        child: NodeIndex,
+        min: u8,
+        parent: ast.LogicalOperator,
+        no_in: bool,
+    ) Error!void {
+        const mismatch = logicalMismatch(self.tree, parent, self.stripped(child));
+        const prec = if (mismatch) Precedence.Grouping else min;
         try self.emitExpr(child, .{ .prec = prec, .no_in = no_in });
     }
 
-    fn emit_conditional_expression(self: *Self, e: *const ast.ConditionalExpression, ctx: Ctx) Error!void {
-        const no_in = ctx.no_in;
-        try self.emitExpr(e.@"test", .{ .prec = Precedence.LogicalOr, .no_in = no_in });
+    fn emit_conditional_expression(
+        self: *Self,
+        e: *const ast.ConditionalExpression,
+        ctx: Ctx,
+    ) Error!void {
+        try self.emitExpr(e.@"test", .{ .prec = Precedence.LogicalOr, .no_in = ctx.no_in });
         try self.space();
         try self.writeByte('?');
         try self.space();
@@ -1130,7 +1146,7 @@ const Printer = struct {
         try self.space();
         try self.writeByte(':');
         try self.space();
-        try self.emitExpr(e.alternate, .{ .prec = Precedence.Assignment, .no_in = no_in });
+        try self.emitExpr(e.alternate, .{ .prec = Precedence.Assignment, .no_in = ctx.no_in });
     }
 
     fn emit_unary_expression(self: *Self, e: *const ast.UnaryExpression) Error!void {
@@ -1151,7 +1167,11 @@ const Printer = struct {
         }
     }
 
-    fn emit_assignment_expression(self: *Self, e: *const ast.AssignmentExpression, ctx: Ctx) Error!void {
+    fn emit_assignment_expression(
+        self: *Self,
+        e: *const ast.AssignmentExpression,
+        ctx: Ctx,
+    ) Error!void {
         try self.emitAssignTarget(e.left);
         try self.space();
         try self.writeStr(e.operator.toString());
@@ -1223,13 +1243,13 @@ const Printer = struct {
     fn emit_object_property(self: *Self, p: *const ast.ObjectProperty) Error!void {
         if (p.method or p.kind == .get or p.kind == .set) {
             const fn_data = self.nodeData(p.value).function;
-            if (p.kind == .get) {
-                try self.writeStr("get ");
-            } else if (p.kind == .set) {
-                try self.writeStr("set ");
-            } else {
-                if (fn_data.async) try self.writeStr("async ");
-                if (fn_data.generator) try self.writeByte('*');
+            switch (p.kind) {
+                .get => try self.writeStr("get "),
+                .set => try self.writeStr("set "),
+                .init => {
+                    if (fn_data.async) try self.writeStr("async ");
+                    if (fn_data.generator) try self.writeByte('*');
+                },
             }
             try self.printObjectKey(p.key, p.computed);
             try self.printFunctionAsMethod(fn_data);
@@ -1256,8 +1276,8 @@ const Printer = struct {
         const head_start = self.mark();
         try self.emitExpr(e.object, .{ .prec = Precedence.Call, .no_call = ctx.no_call });
 
-        const static_key: ?[]const u8 = if (self.options.minify)
-            (if (e.computed) simpleStringKey(self.tree, e.property) else null)
+        const static_key = if (self.options.minify and e.computed)
+            simpleStringKey(self.tree, e.property)
         else
             null;
 
@@ -1334,18 +1354,10 @@ const Printer = struct {
 
     fn emit_string_literal(self: *Self, lit: *const ast.StringLiteral) Error!void {
         const raw = self.tree.string(lit.raw);
-        const single_quoted = raw.len != 0 and raw[0] == '\'';
-        try self.emitQuoted(self.tree.string(lit.value), single_quoted);
-    }
-
-    fn emitStringLit(self: *Self, value: ast.String) Error!void {
-        try self.emitQuoted(self.tree.string(value), false);
-    }
-
-    fn emitQuoted(self: *Self, s: []const u8, single_quoted: bool) Error!void {
-        const q = self.pickQuote(s, single_quoted);
+        const value = self.tree.string(lit.value);
+        const q = self.pickQuote(value, raw.len != 0 and raw[0] == '\'');
         try self.writeByte(q);
-        try self.writeEscapedString(s, q);
+        try self.writeEscapedString(value, q);
         try self.writeRawByte(q);
     }
 
@@ -1710,9 +1722,8 @@ const Printer = struct {
 
     fn emit_formal_parameters(self: *Self, params: *const ast.FormalParameters) Error!void {
         try self.writeByte('(');
-        const list = self.tree.extra(params.items);
         var first = true;
-        for (list) |p| first = (try self.emitSeparated(p, first));
+        for (self.tree.extra(params.items)) |p| first = try self.emitSeparated(p, first);
         if (params.rest != .null) _ = try self.emitSeparated(params.rest, first);
         try self.writeByte(')');
     }
@@ -1850,7 +1861,10 @@ const Printer = struct {
     fn emit_decorator(self: *Self, d: *const ast.Decorator) Error!void {
         try self.writeByte('@');
         // a non-simple decorator like `@(x!)` must wrap
-        try self.emitExpr(d.expression, .{ .prec = if (self.decoratorIsSimple(d.expression)) Precedence.Lowest else Precedence.Grouping });
+        const simple = self.decoratorIsSimple(d.expression);
+        try self.emitExpr(d.expression, .{
+            .prec = if (simple) Precedence.Lowest else Precedence.Grouping,
+        });
     }
 
     fn decoratorIsSimple(self: *const Self, idx: NodeIndex) bool {
@@ -1890,10 +1904,7 @@ const Printer = struct {
         if (d.import_kind == .type) try self.writeStr(" type");
         if (d.phase) |ph| {
             try self.writeByte(' ');
-            try self.writeStr(switch (ph) {
-                .source => "source",
-                .@"defer" => "defer",
-            });
+            try self.writeStr(@tagName(ph));
         }
 
         if (list.len > 0) {
@@ -1911,9 +1922,7 @@ const Printer = struct {
                     try self.writeByte('{');
                     try self.space();
                     var first = true;
-                    while (i < list.len) : (i += 1) {
-                        first = try self.emitSeparated(list[i], first);
-                    }
+                    for (list[i..]) |s| first = try self.emitSeparated(s, first);
                     try self.space();
                     try self.writeByte('}');
                 }
@@ -1961,10 +1970,7 @@ const Printer = struct {
         try self.writeStr("import");
         if (e.phase) |ph| {
             try self.writeByte('.');
-            try self.writeStr(switch (ph) {
-                .source => "source",
-                .@"defer" => "defer",
-            });
+            try self.writeStr(@tagName(ph));
         }
         try self.writeByte('(');
         try self.emitValue(e.source);
@@ -1976,10 +1982,13 @@ const Printer = struct {
         try self.writeByte(')');
     }
 
-    fn emit_export_named_declaration(self: *Self, d: *const ast.ExportNamedDeclaration) Error!void {
-        if (self.options.strip) if (d.export_kind == .type) return;
+    fn emit_export_named_declaration(
+        self: *Self,
+        d: *const ast.ExportNamedDeclaration,
+    ) Error!void {
         const list = self.tree.extra(d.specifiers);
         if (self.options.strip) {
+            if (d.export_kind == .type) return;
             const no_value_specifiers = d.declaration == .null and list.len > 0 and
                 !hasValueExportSpecifier(self.tree, list);
             if (no_value_specifiers) return;
@@ -2117,12 +2126,6 @@ const Printer = struct {
         }
     }
 
-    fn printAngleList(self: *Self, params: IndexRange) Error!void {
-        try self.writeByte('<');
-        try self.emitList(params);
-        try self.writeByte('>');
-    }
-
     fn emit_ts_type_parameter_declaration(
         self: *Self,
         d: *const ast.TSTypeParameterDeclaration,
@@ -2143,7 +2146,9 @@ const Printer = struct {
         self: *Self,
         d: *const ast.TSTypeParameterInstantiation,
     ) Error!void {
-        try self.printAngleList(d.params);
+        try self.writeByte('<');
+        try self.emitList(d.params);
+        try self.writeByte('>');
     }
 
     fn emit_ts_literal_type(self: *Self, t: *const ast.TSLiteralType) Error!void {
@@ -2164,7 +2169,11 @@ const Printer = struct {
 
     fn typePrec(self: *const Self, idx: NodeIndex) u8 {
         return switch (self.nodeData(idx)) {
-            .ts_function_type, .ts_constructor_type, .ts_conditional_type, .ts_infer_type => TPrec.trailing,
+            .ts_function_type,
+            .ts_constructor_type,
+            .ts_conditional_type,
+            .ts_infer_type,
+            => TPrec.trailing,
             .ts_union_type => TPrec.@"union",
             .ts_intersection_type => TPrec.intersection,
             .ts_type_operator => TPrec.operator,
@@ -2209,23 +2218,20 @@ const Printer = struct {
     }
 
     fn emit_ts_jsdoc_nullable_type(self: *Self, t: *const ast.TSJSDocNullableType) Error!void {
-        if (t.postfix) {
-            try self.emit(t.type_annotation);
-            try self.writeByte('?');
-        } else {
-            try self.writeByte('?');
-            try self.emit(t.type_annotation);
-        }
+        try self.printJSDocNullability('?', t.type_annotation, t.postfix);
     }
 
-    fn emit_ts_jsdoc_non_nullable_type(self: *Self, t: *const ast.TSJSDocNonNullableType) Error!void {
-        if (t.postfix) {
-            try self.emit(t.type_annotation);
-            try self.writeByte('!');
-        } else {
-            try self.writeByte('!');
-            try self.emit(t.type_annotation);
-        }
+    fn emit_ts_jsdoc_non_nullable_type(
+        self: *Self,
+        t: *const ast.TSJSDocNonNullableType,
+    ) Error!void {
+        try self.printJSDocNullability('!', t.type_annotation, t.postfix);
+    }
+
+    fn printJSDocNullability(self: *Self, marker: u8, idx: NodeIndex, postfix: bool) Error!void {
+        if (!postfix) try self.writeByte(marker);
+        try self.emit(idx);
+        if (postfix) try self.writeByte(marker);
     }
 
     fn emit_ts_union_type(self: *Self, t: *const ast.TSUnionType) Error!void {
@@ -2236,7 +2242,7 @@ const Printer = struct {
         try self.emitTypeList(t.types, '&');
     }
 
-    // a single-member list comes from a leading operator (`type X = | A`), kept so reparse keeps the wrapper
+    // a lone member keeps its leading operator (`type X = | A`) so reparse keeps the wrapper
     fn emitTypeList(self: *Self, types: IndexRange, comptime op: u8) Error!void {
         const list = self.tree.extra(types);
         if (list.len == 1) {
@@ -2295,7 +2301,12 @@ const Printer = struct {
         try self.printArrowType(t.type_parameters, t.params, t.return_type);
     }
 
-    fn printArrowType(self: *Self, type_parameters: NodeIndex, params: NodeIndex, return_type: NodeIndex) Error!void {
+    fn printArrowType(
+        self: *Self,
+        type_parameters: NodeIndex,
+        params: NodeIndex,
+        return_type: NodeIndex,
+    ) Error!void {
         try self.emit(type_parameters);
         try self.emit(params);
         try self.space();
@@ -2307,11 +2318,9 @@ const Printer = struct {
     // the annotation wrapper's leading `:` is wrong for arrow return types and `is` predicates
     fn emitUnwrappedType(self: *Self, idx: NodeIndex) Error!void {
         if (idx == .null) return;
-        const data = self.nodeData(idx);
-        if (data == .ts_type_annotation) {
-            try self.emit(data.ts_type_annotation.type_annotation);
-        } else {
-            try self.emit(idx);
+        switch (self.nodeData(idx)) {
+            .ts_type_annotation => |t| try self.emit(t.type_annotation),
+            else => try self.emit(idx),
         }
     }
 
@@ -2331,7 +2340,7 @@ const Printer = struct {
     fn emit_ts_mapped_type(self: *Self, t: *const ast.TSMappedType) Error!void {
         try self.writeByte('{');
         try self.space();
-        try self.printMappedModifier(t.readonly, "readonly");
+        try self.printMappedReadonly(t.readonly);
         try self.writeByte('[');
         try self.emit(t.key);
         try self.writeStr(" in ");
@@ -2353,28 +2362,14 @@ const Printer = struct {
         try self.writeByte('}');
     }
 
-    fn printMappedModifier(
-        self: *Self,
-        m: ast.TSMappedTypeModifier,
-        keyword: []const u8,
-    ) Error!void {
+    fn printMappedReadonly(self: *Self, m: ast.TSMappedTypeModifier) Error!void {
         switch (m) {
-            .none => {},
-            .true => {
-                try self.writeStr(keyword);
-                try self.writeByte(' ');
-            },
-            .plus => {
-                try self.writeByte('+');
-                try self.writeStr(keyword);
-                try self.writeByte(' ');
-            },
-            .minus => {
-                try self.writeByte('-');
-                try self.writeStr(keyword);
-                try self.writeByte(' ');
-            },
+            .none => return,
+            .true => {},
+            .plus => try self.writeByte('+'),
+            .minus => try self.writeByte('-'),
         }
+        try self.writeStr("readonly ");
     }
 
     fn printMappedOptional(self: *Self, m: ast.TSMappedTypeModifier) Error!void {
@@ -2390,7 +2385,7 @@ const Printer = struct {
         if (s.readonly) try self.writeStr("readonly ");
         try self.printPropertyKey(s.key, s.computed);
         if (s.optional) try self.writeByte('?');
-        if (s.type_annotation != .null) try self.emit(s.type_annotation);
+        try self.emit(s.type_annotation);
         try self.softSemi();
     }
 
@@ -2405,10 +2400,15 @@ const Printer = struct {
         try self.printSignatureTail(s.type_parameters, s.params, s.return_type);
     }
 
-    fn printSignatureTail(self: *Self, type_parameters: NodeIndex, params: NodeIndex, return_type: NodeIndex) Error!void {
+    fn printSignatureTail(
+        self: *Self,
+        type_parameters: NodeIndex,
+        params: NodeIndex,
+        return_type: NodeIndex,
+    ) Error!void {
         try self.emit(type_parameters);
         try self.emit(params);
-        if (return_type != .null) try self.emit(return_type);
+        try self.emit(return_type);
         try self.softSemi();
     }
 
@@ -2453,7 +2453,10 @@ const Printer = struct {
         try self.writeByte('}');
     }
 
-    fn emit_ts_type_alias_declaration(self: *Self, d: *const ast.TSTypeAliasDeclaration) Error!void {
+    fn emit_ts_type_alias_declaration(
+        self: *Self,
+        d: *const ast.TSTypeAliasDeclaration,
+    ) Error!void {
         if (d.declare) try self.writeStr("declare ");
         try self.writeStr("type ");
         try self.emit(d.id);
@@ -2472,10 +2475,8 @@ const Printer = struct {
 
     fn isLeftmostIntrinsicReference(self: *const Self, idx: NodeIndex) bool {
         return switch (self.nodeData(idx)) {
-            .ts_type_reference => |r| r.type_arguments == .null and switch (self.nodeData(r.type_name)) {
-                .identifier_reference => |id| std.mem.eql(u8, self.tree.string(id.name), "intrinsic"),
-                else => false,
-            },
+            .ts_type_reference => |r| r.type_arguments == .null and
+                self.isNamedReference(r.type_name, "intrinsic"),
             .ts_array_type => |a| self.isLeftmostIntrinsicReference(a.element_type),
             .ts_indexed_access_type => |a| self.isLeftmostIntrinsicReference(a.object_type),
             .ts_union_type => |u| self.firstTypeIsIntrinsic(u.types),
@@ -2586,7 +2587,11 @@ const Printer = struct {
         try self.emit(e.type_annotation);
     }
 
-    fn emit_ts_satisfies_expression(self: *Self, e: *const ast.TSSatisfiesExpression, ctx: Ctx) Error!void {
+    fn emit_ts_satisfies_expression(
+        self: *Self,
+        e: *const ast.TSSatisfiesExpression,
+        ctx: Ctx,
+    ) Error!void {
         try self.emitExpr(e.expression, .{ .prec = Precedence.Relational, .no_in = ctx.no_in });
         try self.writeStr(" satisfies ");
         try self.emit(e.type_annotation);
@@ -2664,13 +2669,13 @@ const Printer = struct {
 
     fn emit_ts_this_parameter(self: *Self, p: *const ast.TSThisParameter) Error!void {
         try self.writeStr("this");
-        if (p.type_annotation != .null) try self.emit(p.type_annotation);
+        try self.emit(p.type_annotation);
     }
 
     fn emit_jsx_element(self: *Self, e: *const ast.JSXElement) Error!void {
         try self.emit(e.opening_element);
         for (self.tree.extra(e.children)) |c| try self.emit(c);
-        if (e.closing_element != .null) try self.emit(e.closing_element);
+        try self.emit(e.closing_element);
     }
 
     fn emit_jsx_opening_element(self: *Self, o: *const ast.JSXOpeningElement) Error!void {
@@ -2730,8 +2735,7 @@ const Printer = struct {
     }
 
     fn emit_jsx_spread_attribute(self: *Self, a: *const ast.JSXSpreadAttribute) Error!void {
-        try self.writeByte('{');
-        try self.writeStr("...");
+        try self.writeStr("{...");
         try self.emitValue(a.argument);
         try self.writeByte('}');
     }
@@ -2749,8 +2753,7 @@ const Printer = struct {
     }
 
     fn emit_jsx_spread_child(self: *Self, c: *const ast.JSXSpreadChild) Error!void {
-        try self.writeByte('{');
-        try self.writeStr("...");
+        try self.writeStr("{...");
         try self.emitValue(c.expression);
         try self.writeByte('}');
     }
