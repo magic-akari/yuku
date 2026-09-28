@@ -53,10 +53,10 @@ The suites run through the published npm packages, built from the local Zig sour
 
 ## [Codegen]($section.id('codegen'))
 
-Curated inline-snapshot tests pin the exact output of `generate` on inputs chosen by hand, across its option sets (plain, `strip`, `minify`). On top of that, the corpus suite runs all three option sets over every parseable file in the parser test suite and checks a set of invariants.
+Curated inline-snapshot tests pin the exact output of `generate` on inputs chosen by hand, across its option sets (plain, `strip`, `minify`). On top of that, the corpus suite runs four option sets (plain, compact, `strip`, `minify`) over every parseable file in the parser test suite and checks a set of invariants.
 
 - Every option set's output parses cleanly again.
-- A plain `generate` is semantics-preserving, meaning the reparsed AST equals the original, modulo positions.
+- A plain or compact `generate` is semantics-preserving, meaning the reparsed AST equals the original, modulo positions.
 - Every option set is a fixed point on its own output, and no comment is lost or duplicated.
 
 ## [Source maps]($section.id('source-maps'))

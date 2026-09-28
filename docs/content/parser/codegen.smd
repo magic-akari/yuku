@@ -151,6 +151,7 @@ pub const SourceMapOptions = struct {
     source_file_name: ?[]const u8 = null,
     source_root: ?[]const u8 = null,
     sources_content: ?[]const u8 = null,
+    utf16_offsets: bool = false,
 };
 ```
 
@@ -161,6 +162,7 @@ pub const SourceMapOptions = struct {
 | `source_file_name` | `?[]const u8` | Source filename, embedded as the single entry of `sources`           |
 | `source_root`      | `?[]const u8` | Prefix embedded as `sourceRoot`                                      |
 | `sources_content`  | `?[]const u8` | When set, embedded as the single entry of the map's `sourcesContent` |
+| `utf16_offsets`    | `bool`        | Whether node spans count UTF-16 code units instead of UTF-8 bytes    |
 
 ### [Result shape]($section.id('result-shape'))
 

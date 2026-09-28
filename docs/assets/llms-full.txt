@@ -1294,9 +1294,9 @@ Each declaration kind has a precomputed `Symbol.Excludes.X` flag set. The rule i
 > A new declaration with `Excludes.X` conflicts with any existing symbol whose flags **intersect** `Excludes.X`. Otherwise the two declarations merge into a single symbol with the union of their flags.
 
 ```zig
-Symbol.Excludes.block_scoped_var    // let / const / using
-Symbol.Excludes.function_scoped_var // var
-Symbol.Excludes.function         // function (allows overloads in TS, var-merge in sloppy)
+Symbol.Excludes.block_scoped_var    // let / const / using, a JS function in a block or module
+Symbol.Excludes.function_scoped_var // var, a JS function atop a function or script
+Symbol.Excludes.function            // a TS function (merges overloads, var, namespace, class)
 Symbol.Excludes.class
 Symbol.Excludes.interface
 Symbol.Excludes.type_alias
@@ -1311,7 +1311,7 @@ Symbol.Excludes.type_parameter
 Symbol.Excludes.enum_member
 ```
 
-This single mechanism handles function overloads, `class` + `interface` declaration merging, `namespace` + `enum` merging, and ambient module patterns without any per-construct branching.
+This single mechanism handles function overloads, `class` + `interface` declaration merging, `namespace` + `enum` merging, and ambient module patterns without any per-construct branching. The one exception is Annex B, which lets a sloppy-mode block repeat a plain `function` declaration.
 
 ## Declaration Spaces
 
@@ -1807,6 +1807,7 @@ ctx.tree          // *const ast.Tree
 ctx.path          // NodePath
 ctx.scope         // ScopeTracker (same API as scoped mode)
 ctx.symbols       // SymbolTracker
+ctx.parentOf(node)    // parent of an already entered node, null at the root
 ctx.inTypePosition()  // true inside a TS type-only subtree
 ctx.inTsNamespace()   // true inside a TS `namespace` body
 ```
@@ -2297,6 +2298,7 @@ pub const SourceMapOptions = struct {
     source_file_name: ?[]const u8 = null,
     source_root: ?[]const u8 = null,
     sources_content: ?[]const u8 = null,
+    utf16_offsets: bool = false,
 };
 ```
 
@@ -2307,6 +2309,7 @@ pub const SourceMapOptions = struct {
 | `source_file_name` | `?[]const u8` | Source filename, embedded as the single entry of `sources`           |
 | `source_root`      | `?[]const u8` | Prefix embedded as `sourceRoot`                                      |
 | `sources_content`  | `?[]const u8` | When set, embedded as the single entry of the map's `sourcesContent` |
+| `utf16_offsets`    | `bool`        | Whether node spans count UTF-16 code units instead of UTF-8 bytes    |
 
 ### Result shape
 
@@ -3087,10 +3090,10 @@ The suites run through the published npm packages, built from the local Zig sour
 
 ## Codegen
 
-Curated inline-snapshot tests pin the exact output of `generate` on inputs chosen by hand, across its option sets (plain, `strip`, `minify`). On top of that, the corpus suite runs all three option sets over every parseable file in the parser test suite and checks a set of invariants.
+Curated inline-snapshot tests pin the exact output of `generate` on inputs chosen by hand, across its option sets (plain, `strip`, `minify`). On top of that, the corpus suite runs four option sets (plain, compact, `strip`, `minify`) over every parseable file in the parser test suite and checks a set of invariants.
 
 - Every option set's output parses cleanly again.
-- A plain `generate` is semantics-preserving, meaning the reparsed AST equals the original, modulo positions.
+- A plain or compact `generate` is semantics-preserving, meaning the reparsed AST equals the original, modulo positions.
 - Every option set is a fixed point on its own output, and no comment is lost or duplicated.
 
 ## Source maps

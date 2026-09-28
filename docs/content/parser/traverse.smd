@@ -339,6 +339,7 @@ ctx.tree          // *const ast.Tree
 ctx.path          // NodePath
 ctx.scope         // ScopeTracker (same API as scoped mode)
 ctx.symbols       // SymbolTracker
+ctx.parentOf(node)    // parent of an already entered node, null at the root
 ctx.inTypePosition()  // true inside a TS type-only subtree
 ctx.inTsNamespace()   // true inside a TS `namespace` body
 ```

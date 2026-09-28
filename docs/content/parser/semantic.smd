@@ -334,9 +334,9 @@ Each declaration kind has a precomputed `Symbol.Excludes.X` flag set. The rule i
 > A new declaration with `Excludes.X` conflicts with any existing symbol whose flags **intersect** `Excludes.X`. Otherwise the two declarations merge into a single symbol with the union of their flags.
 
 ```zig
-Symbol.Excludes.block_scoped_var    // let / const / using
-Symbol.Excludes.function_scoped_var // var
-Symbol.Excludes.function         // function (allows overloads in TS, var-merge in sloppy)
+Symbol.Excludes.block_scoped_var    // let / const / using, a JS function in a block or module
+Symbol.Excludes.function_scoped_var // var, a JS function atop a function or script
+Symbol.Excludes.function            // a TS function (merges overloads, var, namespace, class)
 Symbol.Excludes.class
 Symbol.Excludes.interface
 Symbol.Excludes.type_alias
@@ -351,7 +351,7 @@ Symbol.Excludes.type_parameter
 Symbol.Excludes.enum_member
 ```
 
-This single mechanism handles function overloads, `class` + `interface` declaration merging, `namespace` + `enum` merging, and ambient module patterns without any per-construct branching.
+This single mechanism handles function overloads, `class` + `interface` declaration merging, `namespace` + `enum` merging, and ambient module patterns without any per-construct branching. The one exception is Annex B, which lets a sloppy-mode block repeat a plain `function` declaration.
 
 ## [Declaration Spaces]($section.id('declaration-spaces'))
 
