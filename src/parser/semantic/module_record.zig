@@ -306,12 +306,8 @@ const Collector = struct {
 
         switch (self.tree.data(pattern)) {
             .binding_identifier => try self.exportLocal(pattern, type_only),
-            .assignment_pattern => |p| {
-                try self.patternNames(p.left, type_only);
-            },
-            .binding_rest_element => |p| {
-                try self.patternNames(p.argument, type_only);
-            },
+            .assignment_pattern => |p| try self.patternNames(p.left, type_only),
+            .binding_rest_element => |p| try self.patternNames(p.argument, type_only),
             .array_pattern => |p| {
                 for (self.tree.extra(p.elements)) |element| {
                     try self.patternNames(element, type_only);

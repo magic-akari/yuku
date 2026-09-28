@@ -21,18 +21,18 @@ const eql = std.mem.eql;
 pub const AnalysisError = Allocator.Error;
 
 pub const Checker = struct {
-    const Self = @This();
-
     tree: *ast.Tree,
     allocator: Allocator,
 
-    exported_names: std.StringHashMapUnmanaged(ast.NodeIndex) = .{},
+    exported_names: std.StringHashMapUnmanaged(ast.NodeIndex) = .empty,
     export_specifiers: std.ArrayList(ExportSpecifierInfo) = .empty,
 
     const ExportSpecifierInfo = struct {
         local_name: []const u8,
         node: ast.NodeIndex,
     };
+
+    const Self = @This();
 
     pub fn enter_binding_identifier(
         self: *Self,
@@ -49,14 +49,16 @@ pub const Checker = struct {
         // https://tc39.es/ecma262/#sec-identifiers-static-semantics-early-errors
         if (ctx.scope.isStrict() and !flags.ambient) {
             try self.checkStrictReserved(name, node_index, ctx, "a binding identifier");
-            if (isEvalOrArguments(name)) try self.report(
-                ctx.tree.span(node_index),
-                try self.fmt(
-                    "'{s}' is not allowed as a binding identifier in strict mode",
-                    .{name},
-                ),
-                .{},
-            );
+            if (isEvalOrArguments(name)) {
+                try self.report(
+                    ctx.tree.span(node_index),
+                    try self.fmt(
+                        "'{s}' is not allowed as a binding identifier in strict mode",
+                        .{name},
+                    ),
+                    .{},
+                );
+            }
         } else if (flags.block_scoped_var and eql(u8, name, "let")) {
             try self.report(
                 ctx.tree.span(node_index),
@@ -183,11 +185,13 @@ pub const Checker = struct {
         try self.checkStrictReserved(name, node_index, ctx, "an identifier");
 
         // https://tc39.es/ecma262/#sec-class-definitions-static-semantics-early-errors
-        if (eql(u8, name, "arguments") and !isArgumentsAvailable(ctx)) try self.report(
-            ctx.tree.span(node_index),
-            "'arguments' is not allowed in class field initializers or static blocks",
-            .{},
-        );
+        if (eql(u8, name, "arguments") and !isArgumentsAvailable(ctx)) {
+            try self.report(
+                ctx.tree.span(node_index),
+                "'arguments' is not allowed in class field initializers or static blocks",
+                .{},
+            );
+        }
 
         return .proceed;
     }
@@ -249,7 +253,7 @@ pub const Checker = struct {
         else
             "Remove the leading zero, or use 0o for octal, 0x for hex, or 0b for binary" ++
                 " notation";
-        try self.report(ctx.tree.span(node_index), message, .{ .help = help });
+        try self.report(span, message, .{ .help = help });
         return .proceed;
     }
 
@@ -264,38 +268,26 @@ pub const Checker = struct {
     ) AnalysisError!Action {
         if (!eql(u8, ctx.tree.string(directive.value), "use strict")) return .proceed;
 
-        const non_simple_message =
-            "Illegal 'use strict' directive in function with non-simple parameter list";
         var iter = ctx.path.ancestors();
-        while (iter.next()) |i| {
+        const params_index = while (iter.next()) |i| {
             switch (ctx.tree.data(i)) {
-                .function => |func| {
-                    if (func.params != .null) {
-                        const params = ctx.tree.data(func.params).formal_parameters;
-                        if (ecmascript.findNonSimpleParameter(ctx.tree, params)) |param| {
-                            try self.report(ctx.tree.span(node_index), non_simple_message, .{
-                                .labels = try self.labels(&.{
-                                    self.label(ctx.tree.span(param), "non-simple parameter"),
-                                }),
-                            });
-                        }
-                    }
-                    break;
-                },
-                .arrow_function_expression => |arrow| {
-                    const params = ctx.tree.data(arrow.params).formal_parameters;
-                    if (ecmascript.findNonSimpleParameter(ctx.tree, params)) |param| {
-                        try self.report(ctx.tree.span(node_index), non_simple_message, .{
-                            .labels = try self.labels(&.{
-                                self.label(ctx.tree.span(param), "non-simple parameter"),
-                            }),
-                        });
-                    }
-                    break;
-                },
-                .program => break,
+                .function => |func| break func.params,
+                .arrow_function_expression => |arrow| break arrow.params,
+                .program => return .proceed,
                 else => {},
             }
+        } else return .proceed;
+        if (params_index == .null) return .proceed;
+
+        const params = ctx.tree.data(params_index).formal_parameters;
+        if (ecmascript.findNonSimpleParameter(ctx.tree, params)) |param| {
+            try self.report(
+                ctx.tree.span(node_index),
+                "Illegal 'use strict' directive in function with non-simple parameter list",
+                .{ .labels = try self.labels(&.{
+                    self.label(ctx.tree.span(param), "non-simple parameter"),
+                }) },
+            );
         }
         return .proceed;
     }
@@ -357,11 +349,13 @@ pub const Checker = struct {
         node_index: ast.NodeIndex,
         ctx: *SemanticCtx,
     ) AnalysisError!Action {
-        if (isInFormalParameters(ctx)) try self.report(
-            ctx.tree.span(node_index),
-            "Yield expression is not allowed in formal parameters",
-            .{},
-        );
+        if (findFormalParameters(ctx) != null) {
+            try self.report(
+                ctx.tree.span(node_index),
+                "Yield expression is not allowed in formal parameters",
+                .{},
+            );
+        }
         return .proceed;
     }
 
@@ -372,7 +366,6 @@ pub const Checker = struct {
         ctx: *SemanticCtx,
     ) AnalysisError!Action {
         // ClassStaticBlockBody uses [~Await]
-
         var iter = ctx.path.ancestors();
         while (iter.next()) |i| {
             switch (ctx.tree.data(i)) {
@@ -406,11 +399,13 @@ pub const Checker = struct {
         node_index: ast.NodeIndex,
         ctx: *SemanticCtx,
     ) AnalysisError!Action {
-        if (ctx.scope.isStrict() and isEvalOrArgumentsRef(ctx.tree, expr.argument)) try self.report(
-            ctx.tree.span(node_index),
-            "Cannot assign to 'eval' or 'arguments' in strict mode",
-            .{},
-        );
+        if (ctx.scope.isStrict() and isEvalOrArgumentsRef(ctx.tree, expr.argument)) {
+            try self.report(
+                ctx.tree.span(node_index),
+                "Cannot assign to 'eval' or 'arguments' in strict mode",
+                .{},
+            );
+        }
         return .proceed;
     }
 
@@ -439,14 +434,16 @@ pub const Checker = struct {
     ) AnalysisError!Action {
         if (expr.operator == .in and ctx.tree.data(expr.left) == .private_identifier) {
             const name = ctx.tree.string(ctx.tree.data(expr.left).private_identifier.name);
-            if (!isPrivateNameDeclared(ctx, name)) try self.report(
-                ctx.tree.span(expr.left),
-                try self.fmt(
-                    "Private field '#{s}' must be declared in an enclosing class",
-                    .{name},
-                ),
-                .{},
-            );
+            if (!isPrivateNameDeclared(ctx, name)) {
+                try self.report(
+                    ctx.tree.span(expr.left),
+                    try self.fmt(
+                        "Private field '#{s}' must be declared in an enclosing class",
+                        .{name},
+                    ),
+                    .{},
+                );
+            }
         }
         return .proceed;
     }
@@ -476,11 +473,13 @@ pub const Checker = struct {
                 .member_expression => |m| {
                     const is_private = !m.computed and
                         ctx.tree.data(m.property) == .private_identifier;
-                    if (is_private) try self.report(
-                        ctx.tree.span(node_index),
-                        "Private fields cannot be deleted",
-                        .{},
-                    );
+                    if (is_private) {
+                        try self.report(
+                            ctx.tree.span(node_index),
+                            "Private fields cannot be deleted",
+                            .{},
+                        );
+                    }
                 },
                 else => {},
             }
@@ -553,22 +552,18 @@ pub const Checker = struct {
         ctx: *SemanticCtx,
     ) AnalysisError!Action {
         if (ctx.tree.data(expr.object) == .super) {
-            if (!isSuperPropertyValid(ctx)) try self.report(
-                ctx.tree.span(node_index),
-                "'super' property access is only valid inside a method or class body",
-                .{ .help = "Use an arrow function instead of a regular function to inherit" ++
-                    " the 'super' binding" },
-            );
+            if (!isSuperPropertyValid(ctx)) {
+                try self.report(
+                    ctx.tree.span(node_index),
+                    "'super' property access is only valid inside a method or class body",
+                    .{ .help = "Use an arrow function instead of a regular function to inherit" ++
+                        " the 'super' binding" },
+                );
+            }
         }
 
         // 13.3.7 SuperProperty admits no PrivateIdentifier, and 15.7.7
         // AllPrivateIdentifiersValid requires a declaring class
-        // https://tc39.es/ecma262/#sec-super-keyword
-        //
-        //   MemberExpression : MemberExpression . PrivateIdentifier
-        //   "If names contains the StringValue of PrivateIdentifier, [recurse].
-        //    Return false."
-        // https://tc39.es/ecma262/#sec-static-semantics-allprivateidentifiersvalid
         if (!expr.computed and ctx.tree.data(expr.property) == .private_identifier) {
             const name = ctx.tree.string(ctx.tree.data(expr.property).private_identifier.name);
             if (ctx.tree.data(expr.object) == .super) {
@@ -599,19 +594,23 @@ pub const Checker = struct {
         if (meta != .identifier_name) return .proceed;
         const name = ctx.tree.string(meta.identifier_name.name);
 
-        if (eql(u8, name, "import") and !ctx.tree.isModule()) try self.report(
-            ctx.tree.span(node_index),
-            "'import.meta' is only valid in module code",
-            .{},
-        );
+        if (eql(u8, name, "import") and !ctx.tree.isModule()) {
+            try self.report(
+                ctx.tree.span(node_index),
+                "'import.meta' is only valid in module code",
+                .{},
+            );
+        }
 
         // https://tc39.es/ecma262/#sec-static-semantics-early-errors
-        if (eql(u8, name, "new") and !isNewTargetAvailable(ctx)) try self.report(
-            ctx.tree.span(node_index),
-            "'new.target' is only valid inside functions, class field initializers," ++
-                " or static blocks",
-            .{},
-        );
+        if (eql(u8, name, "new") and !isNewTargetAvailable(ctx)) {
+            try self.report(
+                ctx.tree.span(node_index),
+                "'new.target' is only valid inside functions, class field initializers," ++
+                    " or static blocks",
+                .{},
+            );
+        }
 
         return .proceed;
     }
@@ -676,11 +675,13 @@ pub const Checker = struct {
             "'export *' declaration",
             ctx,
         );
-        if (decl.exported != .null) try self.recordExportedName(
-            getModuleExportName(ctx.tree, decl.exported),
-            node_index,
-            ctx,
-        );
+        if (decl.exported != .null) {
+            try self.recordExportedName(
+                getModuleExportName(ctx.tree, decl.exported),
+                node_index,
+                ctx,
+            );
+        }
         try self.checkDuplicateWithAttributes(decl.attributes, ctx);
         return .proceed;
     }
@@ -745,11 +746,13 @@ pub const Checker = struct {
         node_index: ast.NodeIndex,
         ctx: *SemanticCtx,
     ) AnalysisError!Action {
-        if (ctx.scope.isStrict()) try self.report(
-            ctx.tree.span(node_index),
-            "'with' statements are not allowed in strict mode",
-            .{},
-        );
+        if (ctx.scope.isStrict()) {
+            try self.report(
+                ctx.tree.span(node_index),
+                "'with' statements are not allowed in strict mode",
+                .{},
+            );
+        }
         return .proceed;
     }
 
@@ -760,11 +763,13 @@ pub const Checker = struct {
         node_index: ast.NodeIndex,
         ctx: *SemanticCtx,
     ) AnalysisError!Action {
-        if (stmt.await and !ctx.tree.isTs() and isInsideStaticBlock(ctx)) try self.report(
-            ctx.tree.span(node_index),
-            "Cannot use 'for await' in class static initialization block",
-            .{},
-        );
+        if (stmt.await and !ctx.tree.isTs() and isInsideStaticBlock(ctx)) {
+            try self.report(
+                ctx.tree.span(node_index),
+                "Cannot use 'for await' in class static initialization block",
+                .{},
+            );
+        }
         try self.checkForInOfInitializer(ctx, stmt.left, false);
         if (ctx.scope.isStrict())
             try self.checkAssignTargetEvalArguments(stmt.left, ctx);
@@ -827,12 +832,14 @@ pub const Checker = struct {
                 ),
             }
         } else {
-            if (!isInsideBreakable(ctx)) try self.report(
-                ctx.tree.span(node_index),
-                "Illegal break statement",
-                .{ .help = "A 'break' statement can only be used within an enclosing" ++
-                    " iteration or switch statement" },
-            );
+            if (!isInsideBreakable(ctx)) {
+                try self.report(
+                    ctx.tree.span(node_index),
+                    "Illegal break statement",
+                    .{ .help = "A 'break' statement can only be used within an enclosing" ++
+                        " iteration or switch statement" },
+                );
+            }
         }
         return .proceed;
     }
@@ -873,12 +880,14 @@ pub const Checker = struct {
                 ),
             }
         } else {
-            if (!isInsideIteration(ctx)) try self.report(
-                ctx.tree.span(node_index),
-                "Illegal continue statement",
-                .{ .help = "A 'continue' statement can only be used within an enclosing" ++
-                    " iteration statement" },
-            );
+            if (!isInsideIteration(ctx)) {
+                try self.report(
+                    ctx.tree.span(node_index),
+                    "Illegal continue statement",
+                    .{ .help = "A 'continue' statement can only be used within an enclosing" ++
+                        " iteration statement" },
+                );
+            }
         }
         return .proceed;
     }
@@ -887,10 +896,9 @@ pub const Checker = struct {
     pub fn enter_labeled_statement(
         self: *Self,
         stmt: ast.LabeledStatement,
-        node_index: ast.NodeIndex,
+        _: ast.NodeIndex,
         ctx: *SemanticCtx,
     ) AnalysisError!Action {
-        _ = node_index;
         const name = ctx.tree.string(ctx.tree.data(stmt.label).label_identifier.name);
         var iter = ctx.path.ancestors();
         _ = iter.next(); // skip current node
@@ -901,11 +909,13 @@ pub const Checker = struct {
                 const outer_name = ctx.tree.string(
                     ctx.tree.data(outer_label).label_identifier.name,
                 );
-                if (eql(u8, outer_name, name)) try self.report(
-                    ctx.tree.span(stmt.label),
-                    try self.fmt("Duplicate label '{s}'", .{name}),
-                    .{},
-                );
+                if (eql(u8, outer_name, name)) {
+                    try self.report(
+                        ctx.tree.span(stmt.label),
+                        try self.fmt("Duplicate label '{s}'", .{name}),
+                        .{},
+                    );
+                }
             }
             if (isFunctionBoundary(data)) break;
         }
@@ -939,16 +949,11 @@ pub const Checker = struct {
         return .proceed;
     }
 
-    /// 15.7.1 Static Semantics: Early Errors
     /// https://tc39.es/ecma262/#sec-class-definitions-static-semantics-early-errors
     ///
-    /// ClassBody : ClassElementList
-    ///   - "It is a Syntax Error if PrototypePropertyNameList of ClassElementList
-    ///      contains more than one occurrence of "constructor"."
-    ///   - "It is a Syntax Error if PrivateBoundIdentifiers of ClassElementList contains
-    ///      any duplicate entries, unless the name is used once for a getter and once for
-    ///      a setter and in no other entries, and the getter and setter are either both
-    ///      static or both non-static."
+    /// A class body has at most one constructor, and declares each private name
+    /// once, except for a getter and setter pair that are both static or both
+    /// non-static.
     pub fn enter_class_body(
         self: *Self,
         body: ast.ClassBody,
@@ -1071,14 +1076,16 @@ pub const Checker = struct {
         comptime as_what: []const u8,
     ) AnalysisError!void {
         if (!ctx.scope.isStrict()) return;
-        if (matchStrictReserved(name)) |word| try self.report(
-            ctx.tree.span(node_index),
-            try self.fmt(
-                "'{s}' is reserved in strict mode and cannot be used as " ++ as_what,
-                .{word},
-            ),
-            .{},
-        );
+        if (matchStrictReserved(name)) |word| {
+            try self.report(
+                ctx.tree.span(node_index),
+                try self.fmt(
+                    "'{s}' is reserved in strict mode and cannot be used as " ++ as_what,
+                    .{word},
+                ),
+                .{},
+            );
+        }
     }
 
     // https://tc39.es/ecma262/#sec-keywords-and-reserved-words
@@ -1157,11 +1164,13 @@ pub const Checker = struct {
         if (node == .null) return;
         switch (ctx.tree.data(node)) {
             .identifier_reference => |id| {
-                if (isEvalOrArguments(ctx.tree.string(id.name))) try self.report(
-                    ctx.tree.span(node),
-                    "Cannot assign to 'eval' or 'arguments' in strict mode",
-                    .{},
-                );
+                if (isEvalOrArguments(ctx.tree.string(id.name))) {
+                    try self.report(
+                        ctx.tree.span(node),
+                        "Cannot assign to 'eval' or 'arguments' in strict mode",
+                        .{},
+                    );
+                }
             },
             .array_pattern => |arr| {
                 for (ctx.tree.extra(arr.elements)) |elem| {
@@ -1209,7 +1218,6 @@ pub const Checker = struct {
         var iter = ctx.path.ancestors();
         while (iter.next()) |i| {
             switch (ctx.tree.data(i)) {
-                .arrow_function_expression => {},
                 .function => {
                     if (iter.next()) |parent| {
                         if (ctx.tree.data(parent) == .method_definition and
@@ -1237,7 +1245,6 @@ pub const Checker = struct {
         var iter = ctx.path.ancestors();
         while (iter.next()) |i| {
             switch (ctx.tree.data(i)) {
-                .arrow_function_expression => {},
                 .function => {
                     if (iter.next()) |parent| {
                         const data = ctx.tree.data(parent);
@@ -1297,7 +1304,6 @@ pub const Checker = struct {
         while (iter.next()) |i| {
             switch (ctx.tree.data(i)) {
                 .function, .static_block, .property_definition => return true,
-                .arrow_function_expression => {},
                 else => {},
             }
         }
@@ -1365,15 +1371,10 @@ pub const Checker = struct {
             switch (ctx.tree.data(i)) {
                 .function => return true,
                 .property_definition, .static_block => return false,
-                .arrow_function_expression, .program => {},
                 else => {},
             }
         }
         return true;
-    }
-
-    fn isInFormalParameters(ctx: *SemanticCtx) bool {
-        return findFormalParameters(ctx) != null;
     }
 
     fn findFormalParameters(ctx: *SemanticCtx) ?ast.FormalParameters {
@@ -1469,11 +1470,13 @@ pub const Checker = struct {
         if (!self.tree.isModule()) return;
         for (self.export_specifiers.items) |spec| {
             const found = sem.binding(.module, spec.local_name);
-            if (found == null) try self.report(
-                self.tree.span(spec.node),
-                try self.fmt("Export '{s}' is not defined", .{spec.local_name}),
-                .{},
-            );
+            if (found == null) {
+                try self.report(
+                    self.tree.span(spec.node),
+                    try self.fmt("Export '{s}' is not defined", .{spec.local_name}),
+                    .{},
+                );
+            }
         }
     }
 
@@ -1517,7 +1520,6 @@ pub const Checker = struct {
     }
 
     const ReportOptions = struct {
-        severity: ast.Severity = .@"error",
         help: ?[]const u8 = null,
         labels: []const ast.Label = &.{},
     };
@@ -1531,7 +1533,7 @@ pub const Checker = struct {
         std.debug.assert(span.start <= span.end);
         std.debug.assert(message.len > 0);
         try self.tree.addDiagnostic(.{
-            .severity = opts.severity,
+            .severity = .@"error",
             .message = message,
             .span = span,
             .help = opts.help,
@@ -1544,10 +1546,10 @@ pub const Checker = struct {
     }
 
     fn labels(self: *Self, items: []const ast.Label) Allocator.Error![]const ast.Label {
-        return try self.allocator.dupe(ast.Label, items);
+        return self.allocator.dupe(ast.Label, items);
     }
 
     fn fmt(self: *Self, comptime format: []const u8, args: anytype) Allocator.Error![]u8 {
-        return try std.fmt.allocPrint(self.allocator, format, args);
+        return std.fmt.allocPrint(self.allocator, format, args);
     }
 };
