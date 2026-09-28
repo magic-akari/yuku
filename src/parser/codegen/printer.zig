@@ -1,5 +1,6 @@
 const std = @import("std");
 const util = @import("util");
+const Simd = util.Simd;
 const ast = @import("../ast.zig");
 const sourcemap = @import("sourcemap.zig");
 const utils = @import("utils.zig");
@@ -195,12 +196,34 @@ const Printer = struct {
             try self.code.ensureUnusedCapacity(self.allocator, s.len);
         const old = self.code.items.len;
         self.code.items.len = old + s.len;
-        const dst = self.code.items.ptr + old;
-        if (s.len <= 16) {
-            for (0..s.len) |k| dst[k] = s[k];
-        } else {
-            @memcpy(dst[0..s.len], s);
+        copyShort(self.code.items.ptr + old, s);
+    }
+
+    inline fn copyShort(dst: [*]u8, s: []const u8) void {
+        const n = s.len;
+        if (n > 32) {
+            @memcpy(dst[0..n], s);
+        } else if (n > 16) {
+            copyOverlapping(Simd.Chunk, dst, s);
+        } else if (n >= 8) {
+            copyOverlapping(u64, dst, s);
+        } else if (n >= 4) {
+            copyOverlapping(u32, dst, s);
+        } else if (n > 0) {
+            dst[0] = s[0];
+            dst[n >> 1] = s[n >> 1];
+            dst[n - 1] = s[n - 1];
         }
+    }
+
+    inline fn copyOverlapping(comptime Word: type, dst: [*]u8, s: []const u8) void {
+        const width = @sizeOf(Word);
+        std.debug.assert(s.len >= width);
+        std.debug.assert(s.len <= 2 * width);
+        const head: Word = @bitCast(s[0..width].*);
+        const tail: Word = @bitCast(s[s.len - width ..][0..width].*);
+        dst[0..width].* = @bitCast(head);
+        dst[s.len - width ..][0..width].* = @bitCast(tail);
     }
 
     inline fn writeByte(self: *Self, b: u8) Error!void {
@@ -208,13 +231,7 @@ const Printer = struct {
         try self.separateToken(b);
         self.at_lead = .none;
         try self.pushByte(b);
-        if (comptime source_maps) if (self.sm) |*sm| {
-            try self.placeMapping(sm);
-            if (b == '\n') {
-                sm.gen_line += 1;
-                sm.gen_col = 0;
-            } else sm.gen_col += 1;
-        };
+        if (comptime source_maps) if (self.sm != null) try self.mapByte(b);
     }
 
     inline fn writeStr(self: *Self, s: []const u8) Error!void {
@@ -223,10 +240,7 @@ const Printer = struct {
         try self.separateToken(s[0]);
         self.at_lead = .none;
         try self.pushSlice(s);
-        if (comptime source_maps) if (self.sm) |*sm| {
-            try self.placeMapping(sm);
-            sm.advance(s);
-        };
+        if (comptime source_maps) if (self.sm != null) try self.mapStr(s);
     }
 
     // literal text is opaque to the keyword-space drop
@@ -234,10 +248,7 @@ const Printer = struct {
         self.at_lead = .none;
         try self.pushByte(b);
         self.literal_end = self.code.items.len;
-        if (comptime source_maps) if (self.sm) |*sm| {
-            try self.placeMapping(sm);
-            sm.advance(&.{b});
-        };
+        if (comptime source_maps) if (self.sm != null) try self.mapStr(&.{b});
     }
 
     inline fn writeRawStr(self: *Self, s: []const u8) Error!void {
@@ -245,10 +256,22 @@ const Printer = struct {
         self.at_lead = .none;
         try self.pushSlice(s);
         self.literal_end = self.code.items.len;
-        if (comptime source_maps) if (self.sm) |*sm| {
-            try self.placeMapping(sm);
-            sm.advance(s);
-        };
+        if (comptime source_maps) if (self.sm != null) try self.mapStr(s);
+    }
+
+    noinline fn mapByte(self: *Self, b: u8) Error!void {
+        const sm = &self.sm.?;
+        try self.placeMapping(sm);
+        if (b == '\n') {
+            sm.gen_line += 1;
+            sm.gen_col = 0;
+        } else sm.gen_col += 1;
+    }
+
+    noinline fn mapStr(self: *Self, s: []const u8) Error!void {
+        const sm = &self.sm.?;
+        try self.placeMapping(sm);
+        sm.advance(s);
     }
 
     inline fn separateToken(self: *Self, next: u8) Error!void {
@@ -362,56 +385,20 @@ const Printer = struct {
         if (idx == .null) return;
 
         if (self.options.strip) {
-            const data = self.nodeData(idx);
-            if (data.isTypeContext()) return;
+            if (try self.emitStrippedNode(idx, ctx)) return;
+        }
 
-            switch (data) {
-                .ts_type_alias_declaration,
-                .ts_interface_declaration,
-                .ts_global_declaration,
-                .ts_namespace_export_declaration,
-                .ts_this_parameter,
-                => return,
-                .ts_as_expression,
-                .ts_satisfies_expression,
-                .ts_type_assertion,
-                .ts_non_null_expression,
-                .ts_instantiation_expression,
-                => return self.emitExpr(self.stripped(idx), ctx),
-                .ts_enum_declaration => |e| {
-                    if (e.declare) return;
-                    return self.diagnose(
-                        idx,
-                        "TypeScript enums cannot be stripped to JavaScript",
-                    );
-                },
-                .ts_module_declaration => |m| {
-                    if (m.declare) return;
-                    return self.diagnose(
-                        idx,
-                        "TypeScript namespaces cannot be stripped to JavaScript",
-                    );
-                },
-                .ts_import_equals_declaration => |i| {
-                    if (i.import_kind == .type) return;
-                    return self.diagnose(
-                        idx,
-                        "`import = require()` cannot be stripped to JavaScript",
-                    );
-                },
-                .ts_export_assignment => return self.diagnose(
-                    idx,
-                    "`export =` cannot be stripped to JavaScript",
-                ),
-                .ts_parameter_property => |pp| {
-                    try self.diagnose(
-                        idx,
-                        "parameter properties cannot be stripped to JavaScript",
-                    );
-                    return self.emitExpr(pp.parameter, ctx);
-                },
-                else => {},
-            }
+        // identifiers never need parens
+        switch (self.nodeData(idx)) {
+            inline .identifier_reference, .identifier_name => |id| {
+                const has_comments = self.options.comments != .none and
+                    self.tree.commentsOf(idx).len > 0;
+                if (!has_comments) {
+                    if (comptime source_maps) if (self.sm != null) self.recordMapping(idx);
+                    return self.writeString(id.name);
+                }
+            },
+            else => {},
         }
 
         const wrap = self.needsParens(idx, ctx);
@@ -421,47 +408,100 @@ const Printer = struct {
             const prev_idx = self.current_idx;
             self.current_idx = idx;
             defer self.current_idx = prev_idx;
-            // a comment must not consume the leading edge, only a token does
-            const saved_lead = self.at_lead;
-            try self.emitLeadingComments(idx);
-            self.at_lead = saved_lead;
-            try self.emitNode(idx, inner);
-            try self.emitTrailingComments(idx);
+            const comments = self.tree.commentsOf(idx);
+            if (comments.len == 0) {
+                try self.emitNode(idx, inner);
+            } else {
+                // a comment must not consume the leading edge, only a token does
+                const saved_lead = self.at_lead;
+                try self.emitLeadingComments(idx, comments);
+                self.at_lead = saved_lead;
+                try self.emitNode(idx, inner);
+                try self.emitTrailingComments(comments);
+            }
         } else {
             try self.emitNode(idx, inner);
         }
         if (wrap) try self.writeByte(')');
     }
 
-    // minify rewrites (`true` as `!0`) are accounted for so they regroup right
-    fn precedenceOf(self: *const Self, idx: NodeIndex) u8 {
-        return switch (self.nodeData(idx)) {
-            .sequence_expression => Precedence.Comma,
-            .assignment_expression,
-            .arrow_function_expression,
-            .yield_expression,
-            .conditional_expression,
-            => Precedence.Assignment,
-            .logical_expression => |l| l.operator.toToken().precedence(),
-            .binary_expression => |b| b.operator.toToken().precedence(),
-            .unary_expression, .await_expression, .ts_type_assertion => Precedence.Unary,
-            .update_expression => Precedence.Postfix,
-            .ts_as_expression, .ts_satisfies_expression => Precedence.Relational,
-            .new_expression,
-            .call_expression,
-            .member_expression,
-            .chain_expression,
-            .tagged_template_expression,
-            .import_expression,
+    // true when handled
+    noinline fn emitStrippedNode(self: *Self, idx: NodeIndex, ctx: Ctx) Error!bool {
+        std.debug.assert(self.options.strip);
+        const data = self.nodeData(idx);
+        if (data.isTypeContext()) return true;
+
+        switch (data) {
+            .ts_type_alias_declaration,
+            .ts_interface_declaration,
+            .ts_global_declaration,
+            .ts_namespace_export_declaration,
+            .ts_this_parameter,
+            => return true,
+            .ts_as_expression,
+            .ts_satisfies_expression,
+            .ts_type_assertion,
             .ts_non_null_expression,
             .ts_instantiation_expression,
-            => Precedence.Call,
+            => {
+                try self.emitExpr(self.stripped(idx), ctx);
+                return true;
+            },
+            .ts_enum_declaration => |e| {
+                if (!e.declare) try self.diagnose(
+                    idx,
+                    "TypeScript enums cannot be stripped to JavaScript",
+                );
+                return true;
+            },
+            .ts_module_declaration => |m| {
+                if (!m.declare) try self.diagnose(
+                    idx,
+                    "TypeScript namespaces cannot be stripped to JavaScript",
+                );
+                return true;
+            },
+            .ts_import_equals_declaration => |i| {
+                if (i.import_kind != .type) try self.diagnose(
+                    idx,
+                    "`import = require()` cannot be stripped to JavaScript",
+                );
+                return true;
+            },
+            .ts_export_assignment => {
+                try self.diagnose(idx, "`export =` cannot be stripped to JavaScript");
+                return true;
+            },
+            .ts_parameter_property => |pp| {
+                try self.diagnose(
+                    idx,
+                    "parameter properties cannot be stripped to JavaScript",
+                );
+                try self.emitExpr(pp.parameter, ctx);
+                return true;
+            },
+            else => return false,
+        }
+    }
+
+    // minify rewrites (`true` as `!0`) are accounted for so they regroup right
+    fn precedenceOf(self: *const Self, idx: NodeIndex) u8 {
+        const data = self.nodeData(idx);
+        const fixed = node_precedence[@intFromEnum(std.meta.activeTag(data))];
+        if (fixed != operator_precedence) return fixed;
+        return switch (data) {
+            .logical_expression => |l| l.operator.toToken().precedence(),
+            .binary_expression => |b| b.operator.toToken().precedence(),
             .boolean_literal => if (self.options.minify) Precedence.Unary else Precedence.Grouping,
-            else => Precedence.Grouping,
+            else => unreachable,
         };
     }
 
     fn needsParens(self: *const Self, idx: NodeIndex, ctx: Ctx) bool {
+        // nothing ranks below comma
+        if (self.at_lead == .none and ctx.prec <= Precedence.Comma and
+            !ctx.no_call and !ctx.no_in) return false;
+
         const data = self.nodeData(idx);
 
         // a leading `{` reads as a block, `function`/`class` as a declaration
@@ -560,9 +600,13 @@ const Printer = struct {
         return if (items.len == 0) 0 else items[items.len - 1];
     }
 
-    fn emitLeadingComments(self: *Self, idx: NodeIndex) Error!void {
+    fn emitLeadingComments(
+        self: *Self,
+        idx: NodeIndex,
+        comments: []const ast.AttachedComment,
+    ) Error!void {
         if (idx == self.skip_leading_of) return;
-        for (self.tree.commentsOf(idx)) |c| {
+        for (comments) |c| {
             if (c.position == .before and self.allowComment(c)) try self.writeLeading(c);
         }
     }
@@ -571,12 +615,12 @@ const Printer = struct {
     fn hoistKeyComments(self: *Self, key: NodeIndex) Error!void {
         if (self.options.comments == .none) return;
         if (key == .null) return;
-        try self.emitLeadingComments(key);
+        try self.emitLeadingComments(key, self.tree.commentsOf(key));
         self.skip_leading_of = key;
     }
 
-    fn emitTrailingComments(self: *Self, idx: NodeIndex) Error!void {
-        for (self.tree.commentsOf(idx)) |c| {
+    fn emitTrailingComments(self: *Self, comments: []const ast.AttachedComment) Error!void {
+        for (comments) |c| {
             if (c.position == .after and self.allowComment(c)) {
                 // a deferred `;` landing after the comment would re-home it on reparse
                 try self.flushSemi();
@@ -650,15 +694,22 @@ const Printer = struct {
         if (i < self.code.items.len) self.code.shrinkRetainingCapacity(i);
 
         const n = if (self.pretty()) self.indent_depth * self.options.indent else 0;
-        if (self.code.capacity - self.code.items.len < 1 + n)
-            try self.code.ensureUnusedCapacity(self.allocator, 1 + n);
+        // chunked writes may pass `n`
+        if (self.code.capacity - self.code.items.len < 1 + n + 16)
+            try self.code.ensureUnusedCapacity(self.allocator, 1 + n + 16);
         if (self.code.items[self.code.items.len - 1] != '\n') {
             self.code.appendAssumeCapacity('\n');
             if (comptime source_maps) if (self.sm) |*sm| {
                 sm.gen_line += 1;
             };
         }
-        if (n > 0) self.code.appendNTimesAssumeCapacity(' ', n);
+        const indent = self.code.items.len;
+        std.debug.assert(indent + n + 16 <= self.code.capacity);
+        var written: usize = 0;
+        while (written < n) : (written += 16) {
+            (self.code.items.ptr + indent + written)[0..16].* = Simd.splat(' ');
+        }
+        self.code.items.len = indent + n;
         if (comptime source_maps) if (self.sm) |*sm| {
             sm.gen_col = n;
         };
@@ -1090,7 +1141,7 @@ const Printer = struct {
 
     fn emit_binary_expression(self: *Self, e: *const ast.BinaryExpression, ctx: Ctx) Error!void {
         const tok = e.operator.toToken();
-        const op = tok.toString().?;
+        const op = e.operator.toString();
         const p: u8 = tok.precedence();
         const right_assoc = e.operator == .exponent;
         var left_min = if (right_assoc) Precedence.Postfix else p;
@@ -1118,7 +1169,7 @@ const Printer = struct {
         const p: u8 = tok.precedence();
         try self.emitLogicalOperand(e.left, p, e.operator, ctx.no_in);
         try self.space();
-        try self.writeStr(tok.toString().?);
+        try self.writeStr(e.operator.toString());
         try self.space();
         try self.emitLogicalOperand(e.right, p + 1, e.operator, ctx.no_in);
     }
@@ -1380,6 +1431,8 @@ const Printer = struct {
         var start: usize = 0;
         var i: usize = 0;
         while (i < s.len) : (i += 1) {
+            i += plainRunLength(s, i, quote, self.options.minify);
+            if (i == s.len) break;
             const c = s[i];
             if (c >= 0x80) {
                 if (c == 0xED) {
@@ -1418,6 +1471,22 @@ const Printer = struct {
         if (start < s.len) try self.writeRawStr(s[start..]);
     }
 
+    inline fn plainRunLength(s: []const u8, from: usize, quote: u8, minify: bool) usize {
+        std.debug.assert(from <= s.len);
+        var i = from;
+        while (i + 16 <= s.len) {
+            const chunk = Simd.loadChunk(s, i);
+            var special = (chunk < Simd.splat(0x0E)) | (chunk >= Simd.splat(0x80)) |
+                (chunk == Simd.splat('\\')) | (chunk == Simd.splat(quote));
+            if (minify) special = special | (chunk == Simd.splat('<')) | (chunk == Simd.splat('>'));
+            const run = Simd.firstTrueLane(special);
+            i += run;
+            if (run < 16) break;
+        }
+        std.debug.assert(i <= s.len);
+        return i - from;
+    }
+
     fn writeUnicodeEscape(self: *Self, cp: u32) Error!void {
         const hex = "0123456789abcdef";
         const buf = [_]u8{
@@ -1438,6 +1507,7 @@ const Printer = struct {
 
     fn writeShortestNumber(self: *Self, lit: ast.NumericLiteral) Error!void {
         const raw = self.tree.string(lit.raw);
+        if (lit.kind == .decimal and utils.isMinimalInteger(raw)) return self.writeStr(raw);
         var src_buf: [128]u8 = undefined;
         const cleaned = utils.stripUnderscores(raw, &src_buf) orelse return self.writeStr(raw);
         if (lit.kind != .decimal) return self.writeStr(cleaned);
@@ -2761,7 +2831,7 @@ const Printer = struct {
     }
 };
 
-fn fixedString(comptime tag: std.meta.Tag(NodeData)) ?[]const u8 {
+fn fixedString(comptime tag: NodeTag) ?[]const u8 {
     return switch (tag) {
         .super => "super",
         .this_expression, .ts_this_type => "this",
@@ -2889,6 +2959,42 @@ fn endsWithTsCast(tree: *const Tree, idx: NodeIndex) bool {
         else => false,
     };
 }
+
+const NodeTag = std.meta.Tag(NodeData);
+
+// precedence set by the operator or options
+const operator_precedence = Precedence.Lowest;
+
+comptime {
+    std.debug.assert(operator_precedence < Precedence.Comma);
+}
+
+const node_precedence = blk: {
+    var table: [std.meta.fields(NodeTag).len]u8 = undefined;
+    for (std.enums.values(NodeTag)) |tag| table[@intFromEnum(tag)] = switch (tag) {
+        .sequence_expression => Precedence.Comma,
+        .assignment_expression,
+        .arrow_function_expression,
+        .yield_expression,
+        .conditional_expression,
+        => Precedence.Assignment,
+        .unary_expression, .await_expression, .ts_type_assertion => Precedence.Unary,
+        .update_expression => Precedence.Postfix,
+        .ts_as_expression, .ts_satisfies_expression => Precedence.Relational,
+        .new_expression,
+        .call_expression,
+        .member_expression,
+        .chain_expression,
+        .tagged_template_expression,
+        .import_expression,
+        .ts_non_null_expression,
+        .ts_instantiation_expression,
+        => Precedence.Call,
+        .logical_expression, .binary_expression, .boolean_literal => operator_precedence,
+        else => Precedence.Grouping,
+    };
+    break :blk table;
+};
 
 const TPrec = struct {
     const trailing: u8 = 1; // function, constructor, conditional, infer

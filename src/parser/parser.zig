@@ -324,12 +324,14 @@ pub const Parser = struct {
         return self.source[span.start..span.end];
     }
 
-    inline fn nextToken(self: *Parser) Error!?Token {
-        return self.lexer.nextToken() catch |e| {
+    // false after a reported lexical error
+    inline fn nextTokenInto(self: *Parser, out: *Token) Error!bool {
+        self.lexer.nextTokenInto(out) catch |e| {
             if (e == error.OutOfMemory) return error.OutOfMemory;
             try self.reportLexicalError(@errorCast(e));
-            return null;
+            return false;
         };
+        return true;
     }
 
     pub noinline fn reportLexicalError(self: *Parser, lex_err: lexer.LexicalError) Error!void {
@@ -343,7 +345,7 @@ pub const Parser = struct {
     }
 
     /// Advances to the next token, reporting an escaped keyword consumed in keyword position.
-    pub inline fn advance(self: *Parser) Error!?void {
+    pub fn advance(self: *Parser) Error!?void {
         try self.checkEscapedKeyword();
         return self.advanceWithoutEscapeCheck();
     }
@@ -352,10 +354,8 @@ pub const Parser = struct {
     pub inline fn advanceWithoutEscapeCheck(self: *Parser) Error!?void {
         const leaving = self.current_token;
         self.prev_token_end = leaving.span.end;
-        if (self.lexer.tryNextToken()) |token| {
-            self.current_token = token;
-        } else {
-            self.current_token = try self.nextToken() orelse return null;
+        if (!self.lexer.tryNextToken(&self.current_token)) {
+            if (!try self.nextTokenInto(&self.current_token)) return null;
         }
         try self.commitToken(leaving);
     }
@@ -370,7 +370,8 @@ pub const Parser = struct {
         }
     }
 
-    pub fn reportEscapedKeyword(self: *Parser, span: ast.Span) Error!void {
+    pub noinline fn reportEscapedKeyword(self: *Parser, span: ast.Span) Error!void {
+        @branchHint(.cold);
         try self.diagnostics.append(self.allocator(), .{
             .message = "Keywords cannot contain escape characters",
             .span = span,
@@ -436,7 +437,8 @@ pub const Parser = struct {
         pub inline fn next(self: *Peek) Token {
             // the inline fast path covers idents and simple punctuation,
             // which is most of what multi-token lookahead fetches
-            if (self.parser.lexer.tryNextToken()) |token| return token;
+            var token: Token = undefined;
+            if (self.parser.lexer.tryNextToken(&token)) return token;
             return self.parser.lexer.nextToken() catch
                 Token.invalid(self.parser.lexer.cursor);
         }
@@ -474,7 +476,7 @@ pub const Parser = struct {
     pub inline fn reScanCurrent(self: *Parser) Error!?void {
         const replaced = self.current_token;
         self.lexer.rewindTo(replaced.span.start);
-        self.current_token = try self.nextToken() orelse return null;
+        if (!try self.nextTokenInto(&self.current_token)) return null;
         self.current_token.flags |= newlineFlag(replaced);
     }
 

@@ -505,6 +505,15 @@ pub const StaticBlock = struct {
     body: IndexRange,
 };
 
+fn operatorText(comptime Operator: type, operator: Operator) []const u8 {
+    const texts = comptime blk: {
+        var t: [std.meta.fields(Operator).len][]const u8 = undefined;
+        for (std.enums.values(Operator)) |o| t[@intFromEnum(o)] = o.toToken().toString().?;
+        break :blk t;
+    };
+    return texts[@intFromEnum(operator)];
+}
+
 /// Operator of a `binary_expression`.
 pub const BinaryOperator = enum {
     equal, // ==
@@ -590,7 +599,7 @@ pub const BinaryOperator = enum {
     }
 
     pub fn toString(self: BinaryOperator) []const u8 {
-        return self.toToken().toString().?;
+        return operatorText(BinaryOperator, self);
     }
 };
 
@@ -627,7 +636,7 @@ pub const LogicalOperator = enum {
     }
 
     pub fn toString(self: LogicalOperator) []const u8 {
-        return self.toToken().toString().?;
+        return operatorText(LogicalOperator, self);
     }
 };
 
@@ -686,7 +695,7 @@ pub const UnaryOperator = enum {
     }
 
     pub fn toString(self: UnaryOperator) []const u8 {
-        return self.toToken().toString().?;
+        return operatorText(UnaryOperator, self);
     }
 };
 
@@ -718,7 +727,7 @@ pub const UpdateOperator = enum {
     }
 
     pub fn toString(self: UpdateOperator) []const u8 {
-        return self.toToken().toString().?;
+        return operatorText(UpdateOperator, self);
     }
 };
 
@@ -793,7 +802,7 @@ pub const AssignmentOperator = enum {
     }
 
     pub fn toString(self: AssignmentOperator) []const u8 {
-        return self.toToken().toString().?;
+        return operatorText(AssignmentOperator, self);
     }
 };
 

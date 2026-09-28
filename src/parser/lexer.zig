@@ -6,6 +6,7 @@ const TokenFlag = @import("token.zig").TokenFlag;
 const flagMask = @import("token.zig").flagMask;
 const ast = @import("ast.zig");
 const util = @import("util");
+const Simd = util.Simd;
 const extension = @import("extension.zig");
 
 pub const LexicalError = error{
@@ -43,30 +44,26 @@ pub const LexerMode = enum {
     jsx_tag,
 };
 
+/// Leading ASCII identifier bytes in `chunk`.
+inline fn identContinueRun(chunk: Simd.Chunk) u32 {
+    const lower = chunk | Simd.splat(0x20);
+    const alpha = (lower -% Simd.splat('a')) < Simd.splat(26);
+    const digit = (chunk -% Simd.splat('0')) < Simd.splat(10);
+    const underscore = chunk == Simd.splat('_');
+    const dollar = chunk == Simd.splat('$');
+    return Simd.leadingTrueCount(alpha | digit | underscore | dollar);
+}
+
 /// First offset >= `from` at which `src` holds one of the comptime
 /// `chars`, searched 16 bytes at a time, `src.len` on a miss.
 fn findAnyPos(comptime chars: []const u8, src: []const u8, from: u32) u32 {
-    const Vec = @Vector(16, u8);
-
     var i: usize = from;
     while (i + 16 <= src.len) : (i += 16) {
-        const v: Vec = src[i..][0..16].*;
+        const chunk = Simd.loadChunk(src, i);
         var hit: @Vector(16, bool) = @splat(false);
-        inline for (chars) |ch| {
-            hit = hit | (v == @as(Vec, @splat(ch)));
-        }
-        const mask: u16 = @bitCast(hit);
-        if (mask != 0) return @intCast(i + @ctz(mask));
-    }
-    if (i + 8 <= src.len) {
-        const v: @Vector(8, u8) = src[i..][0..8].*;
-        var hit: @Vector(8, bool) = @splat(false);
-        inline for (chars) |ch| {
-            hit = hit | (v == @as(@Vector(8, u8), @splat(ch)));
-        }
-        const mask: u8 = @bitCast(hit);
-        if (mask != 0) return @intCast(i + @ctz(mask));
-        i += 8;
+        inline for (chars) |ch| hit = hit | (chunk == Simd.splat(ch));
+        const first = Simd.firstTrueLane(hit);
+        if (first < 16) return @intCast(i + first);
     }
     while (i < src.len) : (i += 1) {
         inline for (chars) |ch| {
@@ -137,6 +134,12 @@ pub const Lexer = struct {
         }
     }
 
+    /// `nextToken`, written into `out`.
+    pub fn nextTokenInto(self: *Lexer, out: *Token) LexicalError!void {
+        // avoids a stack round trip
+        out.* = try @call(.always_inline, nextToken, .{self});
+    }
+
     pub fn nextToken(self: *Lexer) LexicalError!Token {
         std.debug.assert(self.cursor <= self.source.len);
 
@@ -153,7 +156,9 @@ pub const Lexer = struct {
         const current_char = self.source[self.cursor];
 
         if (ident_start_table_ascii[current_char] and self.mode == .normal) {
-            return self.scanAsciiIdentifier() orelse try self.scanIdentifierOrKeyword();
+            var token: Token = undefined;
+            if (self.scanAsciiIdentifier(&token)) return token;
+            return self.scanIdentifierOrKeyword();
         }
 
         return switch (current_char) {
@@ -180,44 +185,90 @@ pub const Lexer = struct {
         };
     }
 
-    pub inline fn tryNextToken(self: *Lexer) ?Token {
+    /// Fast path into `out` for identifiers and simple punctuation, false otherwise.
+    pub inline fn tryNextToken(self: *Lexer, out: *Token) bool {
         std.debug.assert(self.cursor <= self.source.len);
 
-        if (self.mode != .normal) return null;
+        if (self.mode != .normal) return false;
 
         const src = self.source;
-        if (self.cursor >= src.len) return null;
+        if (self.cursor >= src.len) return false;
 
         if (src[self.cursor] == ' ') {
             self.cursor += 1;
-            if (self.cursor >= src.len) return null;
+            if (self.cursor >= src.len) return false;
+        } else if (src[self.cursor] == '\n') {
+            return self.tryNextTokenOnNewLine(out);
         }
 
-        const c0 = src[self.cursor];
-        if (ws_class[c0] != 0) return null;
-
-        if (ident_start_table_ascii[c0]) return self.scanAsciiIdentifier();
-        if (simple_punct_tag[c0] != .eof) return self.scanSimplePunctuation();
-
-        if (c0 == '.') {
-            const c1 = self.peek(1);
-            if (c1 != '.' and !std.ascii.isDigit(c1)) {
-                return self.puncToken(1, .dot, self.cursor);
-            }
+        switch (fast_class[src[self.cursor]]) {
+            .ident => return self.scanAsciiIdentifier(out),
+            .punct => {
+                out.* = self.scanSimplePunctuation();
+                return true;
+            },
+            .dot => {
+                const c1 = self.peek(1);
+                if (c1 == '.' or std.ascii.isDigit(c1)) return false;
+                out.* = self.puncToken(1, .dot, self.cursor);
+                return true;
+            },
+            .slow => return false,
         }
-
-        return null;
     }
 
-    inline fn scanAsciiIdentifier(self: *Lexer) ?Token {
+    // a miss rewinds to the line feed
+    inline fn tryNextTokenOnNewLine(self: *Lexer, out: *Token) bool {
+        const src = self.source;
+        const line_feed = self.cursor;
+        std.debug.assert(src[line_feed] == '\n');
+
+        var pos = line_feed + 1;
+        while (pos + 16 <= src.len) {
+            const run = Simd.leadingTrueCount(Simd.loadChunk(src, pos) == Simd.splat(' '));
+            pos += run;
+            if (run < 16) break;
+        } else {
+            while (pos < src.len and src[pos] == ' ') pos += 1;
+        }
+        if (pos >= src.len) return false;
+        std.debug.assert(src[pos] != ' ');
+
+        const class = fast_class[src[pos]];
+        if (class != .ident and class != .punct) return false;
+
+        self.cursor = pos;
+        self.clearTokenFlags();
+        self.setTokenFlag(.line_terminator_before);
+
+        if (class == .ident) {
+            if (self.scanAsciiIdentifier(out)) return true;
+            self.cursor = line_feed;
+            return false;
+        }
+        out.* = self.scanSimplePunctuation();
+        return true;
+    }
+
+    // false on an escape or non-ascii byte
+    inline fn scanAsciiIdentifier(self: *Lexer, out: *Token) bool {
         const src = self.source;
         const start = self.cursor;
+        std.debug.assert(ident_start_table_ascii[src[start]]);
 
         var pos = start + 1;
-        while (pos < src.len and ident_continue_table_ascii[src[pos]]) {
-            pos += 1;
+        while (pos + 16 <= src.len) {
+            const run = identContinueRun(Simd.loadChunk(src, pos));
+            pos += run;
+            if (run < 16) break;
+        } else {
+            while (pos < src.len and ident_continue_table_ascii[src[pos]]) {
+                pos += 1;
+            }
         }
-        if (pos < src.len and (src[pos] == '\\' or src[pos] >= 0x80)) return null;
+        std.debug.assert(pos > start);
+        if (pos < src.len) std.debug.assert(!ident_continue_table_ascii[src[pos]]);
+        if (pos < src.len and (src[pos] == '\\' or src[pos] >= 0x80)) return false;
 
         self.cursor = pos;
         const first = src[start];
@@ -228,7 +279,8 @@ pub const Lexer = struct {
             getKeywordType(src[start..pos])
         else
             .identifier;
-        return self.createToken(tag, start, pos);
+        out.* = self.createToken(tag, start, pos);
+        return true;
     }
 
     const simple_punct_tag: [256]TokenTag = blk: {
@@ -244,6 +296,18 @@ pub const Lexer = struct {
         t[','] = .comma;
         t[':'] = .colon;
         t['@'] = .at;
+        break :blk t;
+    };
+
+    const FastClass = enum(u8) { slow, ident, punct, dot };
+
+    const fast_class: [256]FastClass = blk: {
+        var t: [256]FastClass = @splat(.slow);
+        for (0..256) |c| {
+            if (ident_start_table_ascii[c]) t[c] = .ident;
+            if (simple_punct_tag[c] != .eof) t[c] = .punct;
+        }
+        t['.'] = .dot;
         break :blk t;
     };
 
@@ -1414,20 +1478,18 @@ pub const Lexer = struct {
                 else => pos += 1,
             }
         }
-        // past the first line, search 16 bytes at a time with windows overlapping by one byte
-        // so a `*/` straddling two windows is still found
+        // the offset load catches `*/` across chunks
         var w = pos - 1;
-        while (w + 16 <= src.len) {
-            const v: @Vector(16, u8) = src[w..][0..16].*;
-            const stars: u16 = @bitCast(v == @as(@Vector(16, u8), @splat('*')));
-            const slashes: u16 = @bitCast(v == @as(@Vector(16, u8), @splat('/')));
-            const ends = stars & (slashes >> 1);
-            if (ends != 0) {
-                self.cursor = @intCast(w + @ctz(ends) + 2);
+        while (w + 17 <= src.len) {
+            const stars = Simd.loadChunk(src, w) == Simd.splat('*');
+            const slashes = Simd.loadChunk(src, w + 1) == Simd.splat('/');
+            const first = Simd.firstTrueLane(stars & slashes);
+            if (first < 16) {
+                self.cursor = w + first + 2;
                 try self.recordComment(.block, start, self.cursor);
                 return;
             }
-            w += 15;
+            w += 16;
         }
         while (w + 1 < src.len) : (w += 1) {
             if (src[w] == '*' and src[w + 1] == '/') {

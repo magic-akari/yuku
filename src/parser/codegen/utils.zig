@@ -64,6 +64,14 @@ pub fn stripUnderscores(raw: []const u8, buf: []u8) ?[]const u8 {
     return buf[0..len];
 }
 
+/// Digits without a trailing zero, already the shortest spelling.
+pub fn isMinimalInteger(raw: []const u8) bool {
+    std.debug.assert(raw.len > 0);
+    if (raw[raw.len - 1] == '0') return false;
+    for (raw) |c| if (!std.ascii.isDigit(c)) return false;
+    return true;
+}
+
 /// Returns the shortest equivalent spelling of decimal `s`, rewriting the text
 /// exactly with no float round-trip. `scratch` and `s` must not alias.
 pub fn shortestDecimal(s: []const u8, scratch: []u8) []const u8 {
