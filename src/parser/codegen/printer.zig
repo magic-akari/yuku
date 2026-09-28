@@ -24,7 +24,7 @@ const Ctx = struct {
 };
 
 // at a leading edge `{`/`function`/`class`/`let[` would misparse as a block or declaration
-const Lead = enum { none, stmt, arrow };
+const Lead = enum { none, stmt, arrow, export_default };
 
 pub const SourceMap = sourcemap.SourceMap;
 pub const SourceMapOptions = sourcemap.Options;
@@ -439,14 +439,14 @@ const Printer = struct {
         const data = self.nodeData(idx);
 
         // a leading `{` reads as a block, `function`/`class` as a declaration
-        if (self.at_lead != .none) {
+        if (self.at_lead == .stmt or self.at_lead == .arrow) {
             switch (data) {
                 .object_expression => return true,
                 .assignment_expression => |a| if (self.nodeData(a.left) == .object_pattern) return true,
                 else => {},
             }
         }
-        if (self.at_lead == .stmt) {
+        if (self.at_lead == .stmt or self.at_lead == .export_default) {
             switch (data) {
                 .function => |f| if (f.type == .function_expression or
                     f.type == .ts_empty_body_function_expression) return true,
@@ -1996,24 +1996,14 @@ const Printer = struct {
     ) Error!void {
         const cur = self.cursor();
         try self.writeStr("export default ");
-        const data = self.nodeData(d.declaration);
-        // a declaration may strip to nothing, so roll back the prefix
-        const emitted = switch (data) {
-            .function, .class, .ts_interface_declaration => try self.tryEmit(d.declaration),
-            else => blk: {
-                try self.emitExpr(d.declaration, .{ .prec = Precedence.Assignment });
-                break :blk true;
-            },
-        };
-        if (!emitted) {
-            self.restore(cur);
+        if (self.nodeData(d.declaration).isDeclaration()) {
+            // a declaration may strip to nothing, so roll back the prefix
+            if (!try self.tryEmit(d.declaration)) self.restore(cur);
             return;
         }
-        // expression defaults need `;`, declaration forms do not
-        switch (data) {
-            .function, .class, .ts_interface_declaration => {},
-            else => try self.softSemi(),
-        }
+        self.at_lead = .export_default;
+        try self.emitExpr(d.declaration, .{ .prec = Precedence.Assignment });
+        try self.softSemi();
     }
 
     fn emit_export_all_declaration(self: *Self, d: *const ast.ExportAllDeclaration) Error!void {

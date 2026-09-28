@@ -113,6 +113,23 @@ test("TS leading union and intersection operators", () => {
     `);
 });
 
+test("an export default value keeps the parens that stop it reading as a declaration", () => {
+  const source = [
+    "export default (function () {})();",
+    "export default (class {}).name;",
+    "export default (async function () {})();",
+    "export default (function f() {});",
+    "export default { a: 1 };",
+  ].join("\n");
+  expect(gen(source, {}, "input.js", { preserveParens: false })).toMatchInlineSnapshot(`
+    "export default (function() {})();
+    export default (class {}).name;
+    export default (async function() {})();
+    export default (function f() {});
+    export default { a: 1 };"
+  `);
+});
+
 test("an arrow's lone type parameter keeps a trailing comma", () => {
   expect(
     gen(`<T>(x: T) => x;\n<T = U>() => 0;\n<T extends U>() => 0;\nfunction f<T>() {}`),
