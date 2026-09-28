@@ -134,6 +134,7 @@ const Printer = struct {
     skip_leading_of: NodeIndex = .null,
     // cleared by the first real token, preserved across comments
     at_lead: Lead = .none,
+    literal_end: usize = 0,
     // a bare string here would reparse as a directive
     in_prologue: bool = false,
     // `in` forbidden in the current declarator init (a `for` head)
@@ -214,6 +215,7 @@ const Printer = struct {
     inline fn writeRawByte(self: *Self, b: u8) Error!void {
         self.at_lead = .none;
         try self.pushByte(b);
+        self.literal_end = self.code.items.len;
         if (comptime source_maps) if (self.sm) |*sm| sm.advance(&.{b});
     }
 
@@ -221,6 +223,7 @@ const Printer = struct {
         if (s.len == 0) return;
         self.at_lead = .none;
         try self.pushSlice(s);
+        self.literal_end = self.code.items.len;
         if (comptime source_maps) if (self.sm) |*sm| sm.advance(s);
     }
 
@@ -228,7 +231,7 @@ const Printer = struct {
     inline fn dropPendingKeywordSpace(self: *Self, next: u8) void {
         if (self.pretty()) return;
         const items = self.code.items;
-        if (items.len < 2 or items[items.len - 1] != ' ') return;
+        if (items.len < 2 or items[items.len - 1] != ' ' or items.len == self.literal_end) return;
         if (utils.isIdCont(items[items.len - 2]) and !utils.isIdCont(next)) {
             _ = self.code.pop();
             if (comptime source_maps) if (self.sm) |*sm| if (sm.gen_col > 0) {
@@ -289,6 +292,7 @@ const Printer = struct {
     inline fn rewindTo(self: *Self, pos: usize) void {
         std.debug.assert(pos <= self.code.items.len);
         self.code.shrinkRetainingCapacity(pos);
+        if (self.literal_end > pos) self.literal_end = 0;
     }
 
     const Cursor = struct {
@@ -304,8 +308,7 @@ const Printer = struct {
     }
 
     inline fn restore(self: *Self, c: Cursor) void {
-        std.debug.assert(c.code <= self.code.items.len);
-        self.code.shrinkRetainingCapacity(c.code);
+        self.rewindTo(c.code);
         if (comptime source_maps) if (c.sm) |snap| if (self.sm) |*sm| sm.restore(snap);
     }
 
@@ -2731,7 +2734,7 @@ const Printer = struct {
     fn emit_jsx_empty_expression(_: *Self, _: *const ast.JSXEmptyExpression) Error!void {}
 
     fn emit_jsx_text(self: *Self, t: *const ast.JSXText) Error!void {
-        try self.writeString(t.value);
+        try self.writeRawStr(self.tree.string(t.value));
     }
 
     fn emit_jsx_spread_child(self: *Self, c: *const ast.JSXSpreadChild) Error!void {

@@ -147,6 +147,13 @@ test("an `in` inside a for-init arrow body or yield keeps its parens", () => {
   `);
 });
 
+test("compact output keeps the trailing space of JSX text", () => {
+  const source = `const a = <p>hello {name}</p>;\nconst b = <p>a <b /> c </p>;`;
+  expect(gen(source, { format: "compact" }, "input.jsx")).toMatchInlineSnapshot(
+    `"const a=<p>hello {name}</p>;const b=<p>a <b/> c </p>"`,
+  );
+});
+
 test("an arrow's lone type parameter keeps a trailing comma", () => {
   expect(
     gen(`<T>(x: T) => x;\n<T = U>() => 0;\n<T extends U>() => 0;\nfunction f<T>() {}`),
