@@ -1247,10 +1247,9 @@ const Printer = struct {
             try self.emit(e.property);
             try self.writeByte(']');
         } else {
-            // `1.x` would lex the `.` as a fraction dot, so pad (`1 .x`) or double (`1..x`)
+            // `1.x` would lex as a fraction
             const head = self.code.items[head_start..];
-            if (!e.optional and isBareIntegerHead(head))
-                try self.writeByte(if (self.pretty()) ' ' else '.');
+            if (!e.optional and isBareIntegerHead(head)) try self.writeRawByte(' ');
             try self.writeStr(if (e.optional) "?." else ".");
             if (static_key) |k| try self.writeStr(k) else try self.emit(e.property);
         }
