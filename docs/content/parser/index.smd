@@ -7,7 +7,7 @@
 ---
 Yuku's parser turns JavaScript and TypeScript source code into an [Abstract Syntax Tree](/parser/ast/).
 
-## [Node.js]($section.id('nodejs'))
+## [JavaScript]($section.id('javascript'))
 
 ```bash
 npm install yuku-parser

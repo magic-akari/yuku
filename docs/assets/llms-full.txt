@@ -23,7 +23,7 @@ A high-performance JavaScript/TypeScript compiler toolchain written in Zig, brin
 
 ## Current Status
 
-The `.js(x)`/`.ts(x)` parser is stable and ready for production use in both Node.js and Zig. Its AST output is fully validated against the [parser test suite](https://yuku.fyi/testing/). The [semantic model](https://yuku.fyi/parser/semantic/) and [traverser](https://yuku.fyi/parser/traverse/) are stable and power Yuku's semantic checker.
+The `.js(x)`/`.ts(x)` parser is stable and ready for production use in both JavaScript and Zig. Its AST output is fully validated against the [parser test suite](https://yuku.fyi/testing/). The [semantic model](https://yuku.fyi/parser/semantic/) and [traverser](https://yuku.fyi/parser/traverse/) are stable and power Yuku's semantic checker.
 
 ## Performance
 
@@ -50,7 +50,7 @@ Source: https://yuku.fyi/parser/
 
 Yuku's parser turns JavaScript and TypeScript source code into an [Abstract Syntax Tree](https://yuku.fyi/parser/ast/).
 
-## Node.js
+## JavaScript
 
 ```bash
 npm install yuku-parser
@@ -2101,7 +2101,7 @@ Source: https://yuku.fyi/parser/codegen/
 
 The codegen writes a `Tree` back as source code. It emits each node from its tag in a single walk, so the output is always syntactically valid and faithful to the tree's structure.
 
-## Node.js
+## JavaScript
 
 ```bash
 npm install yuku-codegen
@@ -2115,23 +2115,7 @@ const { program } = parse("const x = 1 + 2;");
 const { code } = generate(program);
 ```
 
-`generate` takes the `Program` node returned by [yuku-parser](https://www.npmjs.com/package/yuku-parser). For source maps, pass the original source text via `sourceMap: { source }`. In JavaScript, `minify` also takes an object (`{ syntax, whitespace, quotes }`) to pick individual switches, and `comments` accepts `true` / `false` for `"all"` / `"none"`. See [yuku-codegen on npm](https://www.npmjs.com/package/yuku-codegen) for the full API.
-
-## WebAssembly
-
-```bash
-npm install @yuku-codegen/wasm
-```
-
-```js
-import { parse } from "@yuku-parser/wasm";
-import { generate } from "@yuku-codegen/wasm";
-
-const { program } = parse("const x = 1 + 2;");
-const code = generate(program);
-```
-
-The same options as `yuku-codegen`, except that `generate` returns the code string directly and source maps are unavailable. It pairs with `@yuku-parser/wasm` for browsers and other environments without native bindings. See [@yuku-codegen/wasm on npm](https://www.npmjs.com/package/@yuku-codegen/wasm).
+Pure JavaScript, 2.6x faster than `@babel/generator` and 3x with source maps on. See [yuku-codegen on npm](https://www.npmjs.com/package/yuku-codegen) for the full API.
 
 ## Zig
 
@@ -2245,7 +2229,6 @@ pub const SourceMapOptions = struct {
     source_file_name: ?[]const u8 = null,
     source_root: ?[]const u8 = null,
     sources_content: ?[]const u8 = null,
-    utf16_offsets: bool = false,
 };
 ```
 
@@ -2256,7 +2239,6 @@ pub const SourceMapOptions = struct {
 | `source_file_name` | `?[]const u8` | Source filename, embedded as the single entry of `sources`           |
 | `source_root`      | `?[]const u8` | Prefix embedded as `sourceRoot`                                      |
 | `sources_content`  | `?[]const u8` | When set, embedded as the single entry of the map's `sourcesContent` |
-| `utf16_offsets`    | `bool`        | Whether node spans count UTF-16 code units instead of UTF-8 bytes    |
 
 ### Result shape
 
@@ -3020,6 +3002,8 @@ Curated inline-snapshot tests pin the exact output of `generate` on hand-picked 
 - Every option set's output parses cleanly again.
 - A plain or compact `generate` is semantics-preserving, meaning the reparsed AST equals the original, modulo positions.
 - Every option set is a fixed point on its own output, and no comment is lost or duplicated.
+
+The `yuku-codegen` package implements the same codegen in JavaScript. A conformance suite prints every corpus file with both implementations under ten option sets and requires identical code, source map mappings, and errors.
 
 ## Source maps
 

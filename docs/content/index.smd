@@ -21,7 +21,7 @@ A high-performance JavaScript/TypeScript compiler toolchain written in Zig, brin
 
 ## [Current Status]($section.id('current-status'))
 
-The `.js(x)`/`.ts(x)` parser is stable and ready for production use in both Node.js and Zig. Its AST output is fully validated against the [parser test suite](/testing/). The [semantic model](/parser/semantic/) and [traverser](/parser/traverse/) are stable and power Yuku's semantic checker.
+The `.js(x)`/`.ts(x)` parser is stable and ready for production use in both JavaScript and Zig. Its AST output is fully validated against the [parser test suite](/testing/). The [semantic model](/parser/semantic/) and [traverser](/parser/traverse/) are stable and power Yuku's semantic checker.
 
 ## [Performance]($section.id('performance'))
 

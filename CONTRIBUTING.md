@@ -46,6 +46,13 @@ so the suite sees your change.
 Review the snapshot and commit it alongside your test. To learn what each suite
 checks, see [how Yuku is tested](https://yuku.fyi/testing/).
 
+### Change the codegen
+
+The codegen has a Zig implementation, `src/parser/codegen/printer.zig`, and a
+JavaScript one, `npm/yuku-codegen/src/printer.ts`. They mirror each other
+function by function, so a change lands in both. `bun run test:codegen` prints
+the test corpus with each and fails on any difference.
+
 ## Find your way around
 
 ```

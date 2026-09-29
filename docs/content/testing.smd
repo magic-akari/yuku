@@ -59,6 +59,8 @@ Curated inline-snapshot tests pin the exact output of `generate` on hand-picked 
 - A plain or compact `generate` is semantics-preserving, meaning the reparsed AST equals the original, modulo positions.
 - Every option set is a fixed point on its own output, and no comment is lost or duplicated.
 
+The `yuku-codegen` package implements the same codegen in JavaScript. A conformance suite prints every corpus file with both implementations under ten option sets and requires identical code, source map mappings, and errors.
+
 ## [Source maps]($section.id('source-maps'))
 
 Every corpus file is round-tripped through `generate` with source maps enabled, and every identifier in the output must trace back to the right name and position in the original source.
