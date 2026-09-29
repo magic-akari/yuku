@@ -46,7 +46,7 @@ pub fn attach(tree: *ast.Tree, raw: []const ast.Comment) Error!void {
     defer ctx.scratch.deinit(alloc);
     try ctx.scratch.ensureTotalCapacity(alloc, 256);
 
-    try ctx.walkAt(tree.root, ctx.spans[@intFromEnum(tree.root)]);
+    try ctx.walkAt(tree.root, ctx.spans[@intFromEnum(tree.root)], .null);
 
     while (ctx.cursor < raw.len) : (ctx.cursor += 1) {
         ctx.write(@intFromEnum(tree.root), .inside, false);
@@ -88,9 +88,16 @@ const Ctx = struct {
     alloc: std.mem.Allocator,
     scratch: std.ArrayList(ChildInfo),
 
-    fn walkAt(self: *Ctx, node: ast.NodeIndex, node_span: ast.Span) Error!void {
+    fn walkAt(
+        self: *Ctx,
+        node: ast.NodeIndex,
+        node_span: ast.Span,
+        parent: ast.NodeIndex,
+    ) Error!void {
         if (self.cursor >= self.raw.len) return;
         if (self.raw[self.cursor].span.start >= node_span.end) return;
+        const host = if (self.hosts(node)) node else parent;
+        std.debug.assert(self.hosts(host));
 
         const checkpoint = self.scratch.items.len;
         defer self.scratch.shrinkRetainingCapacity(checkpoint);
@@ -102,13 +109,19 @@ const Ctx = struct {
         var prev_idx: ast.NodeIndex = .null;
         var prev_end: u32 = 0;
         for (children) |child| {
-            try self.consumeBetween(node, prev_idx, prev_end, child.idx, child.start);
-            try self.walkAt(child.idx, .{ .start = child.start, .end = child.end });
+            try self.consumeBetween(host, prev_idx, prev_end, child.idx, child.start);
+            try self.walkAt(child.idx, .{ .start = child.start, .end = child.end }, host);
             prev_idx = child.idx;
             prev_end = child.end;
         }
 
-        try self.consumeBetween(node, prev_idx, prev_end, .null, node_span.end);
+        try self.consumeBetween(host, prev_idx, prev_end, .null, node_span.end);
+    }
+
+    // a parameter list has no ESTree node, so it bounds the comments inside its parens but
+    // never hosts one
+    inline fn hosts(self: *const Ctx, node: ast.NodeIndex) bool {
+        return self.data_items[@intFromEnum(node)] != .formal_parameters;
     }
 
     fn collectChildren(self: *Ctx, node: ast.NodeIndex) Error!void {
@@ -137,9 +150,15 @@ const Ctx = struct {
         }
     }
 
+    // a parameter is its pattern in ESTree, with the same span
     inline fn pushChild(self: *Ctx, child: ast.NodeIndex) Error!void {
-        const s = self.spans[@intFromEnum(child)];
-        try self.scratch.append(self.alloc, .{ .idx = child, .start = s.start, .end = s.end });
+        const node = switch (self.data_items[@intFromEnum(child)]) {
+            .formal_parameter => |param| param.pattern,
+            else => child,
+        };
+        const s = self.spans[@intFromEnum(node)];
+        std.debug.assert(std.meta.eql(s, self.spans[@intFromEnum(child)]));
+        try self.scratch.append(self.alloc, .{ .idx = node, .start = s.start, .end = s.end });
     }
 
     fn consumeBetween(
@@ -154,8 +173,8 @@ const Ctx = struct {
             const c = &self.raw[self.cursor];
             if (c.span.start >= next_start) return;
 
-            const has_prev = prev_idx != .null;
-            const has_next = next_idx != .null;
+            const has_prev = prev_idx != .null and self.hosts(prev_idx);
+            const has_next = next_idx != .null and self.hosts(next_idx);
 
             if (has_prev and has_next) {
                 if (self.sameLine(c.span.end, next_start)) {
