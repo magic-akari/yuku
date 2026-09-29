@@ -1,4 +1,4 @@
-// shared metadata for the decoder and encoder generators, one source so they agree
+// ESTree metadata for the decoder generators, one source so they agree
 
 const std = @import("std");
 const parser = @import("parser");
@@ -26,10 +26,9 @@ pub const FUNCTION_TYPES = [_][]const u8{
     "TSEmptyBodyFunctionExpression",
 };
 pub const CLASS_TYPES = [_][]const u8{ "ClassDeclaration", "ClassExpression" };
-pub const COMMENT_TYPES = [_][]const u8{ "Line", "Block" };
 pub const SEVERITY = [_][]const u8{ "error", "warning", "hint", "info" };
 
-// tables with non-string elements, decoder writes them raw and the encoder inverts
+// tables with non-string elements, which the decoder writes raw
 pub const IMPORT_EXPORT_KINDS_RAW = [_][]const u8{ "\"value\"", "\"type\"" };
 pub const ACCESSIBILITY_RAW = [_][]const u8{ "null", "\"public\"", "\"private\"", "\"protected\"" };
 pub const TS_TYPE_OPERATORS_RAW = [_][]const u8{ "\"keyof\"", "\"unique\"", "\"readonly\"" };
@@ -55,11 +54,6 @@ pub fn enumTableName(comptime E: type) []const u8 {
     if (E == ast.TSMethodSignatureKind) return "TS_METHOD_SIGNATURE_KINDS";
     if (E == ast.TSModuleDeclarationKind) return "TS_MODULE_KINDS";
     @compileError("no lookup table for enum: " ++ @typeName(E));
-}
-
-// true when an enum's inverse must be a JS function rather than an object map
-pub fn enumNeedsInverseFn(comptime E: type) bool {
-    return E == ast.Accessibility or E == ast.TSMappedTypeModifier;
 }
 
 // ESTree name overrides where snake to pascal is wrong (ts_jsdoc_ to TSJSDoc)
@@ -117,75 +111,5 @@ pub fn snakeConvert(comptime name: []const u8, comptime pascal: bool) []const u8
         }
         const final = result[0..len].*;
         return &final;
-    }
-}
-
-// identifier dispatch role, ESTree has one Identifier but yuku has five variants
-pub const Role = enum {
-    // ESTree Identifier becomes identifier_reference
-    auto,
-    // binding position becomes binding_identifier, carries decorators optional type in TS
-    binding,
-    // label slot for break, continue, or a labeled statement
-    label,
-    // non-binding name slot becomes identifier_name, else the minifier corrupts these names
-    name,
-};
-
-const ROLES = [_]struct { node: []const u8, field: []const u8, role: Role }{
-    .{ .node = "variable_declarator", .field = "id", .role = .binding },
-    .{ .node = "assignment_pattern", .field = "left", .role = .binding },
-    .{ .node = "binding_rest_element", .field = "argument", .role = .binding },
-    .{ .node = "binding_property", .field = "value", .role = .binding },
-    .{ .node = "catch_clause", .field = "param", .role = .binding },
-    .{ .node = "import_specifier", .field = "local", .role = .binding },
-    .{ .node = "import_default_specifier", .field = "local", .role = .binding },
-    .{ .node = "import_namespace_specifier", .field = "local", .role = .binding },
-    .{ .node = "ts_type_parameter", .field = "name", .role = .binding },
-    .{ .node = "ts_type_alias_declaration", .field = "id", .role = .binding },
-    .{ .node = "ts_interface_declaration", .field = "id", .role = .binding },
-    .{ .node = "ts_enum_declaration", .field = "id", .role = .binding },
-    .{ .node = "ts_import_equals_declaration", .field = "id", .role = .binding },
-    .{ .node = "ts_parameter_property", .field = "parameter", .role = .binding },
-    .{ .node = "break_statement", .field = "label", .role = .label },
-    .{ .node = "continue_statement", .field = "label", .role = .label },
-    .{ .node = "labeled_statement", .field = "label", .role = .label },
-    .{ .node = "import_specifier", .field = "imported", .role = .name },
-    .{ .node = "import_attribute", .field = "key", .role = .name },
-    .{ .node = "export_all_declaration", .field = "exported", .role = .name },
-    .{ .node = "export_specifier", .field = "exported", .role = .name },
-    .{ .node = "ts_qualified_name", .field = "right", .role = .name },
-    .{ .node = "ts_import_type", .field = "qualifier", .role = .name },
-};
-
-pub fn fieldRole(comptime tag: []const u8, comptime field: []const u8) Role {
-    inline for (ROLES) |r| {
-        if (comptime std.mem.eql(u8, r.node, tag) and
-            std.mem.eql(u8, r.field, field)) return r.role;
-    }
-    return .auto;
-}
-
-// encoder special-case set, nodes the generic struct to object mapping can't express
-const SPECIAL = [_][]const u8{
-    "formal_parameter",              "formal_parameters",                  "function",
-    "arrow_function_expression",     "program",                            "directive",
-    "string_literal",                "numeric_literal",                    "bigint_literal",
-    "boolean_literal",               "null_literal",                       "regexp_literal",
-    "template_element",              "class",                              "method_definition",
-    "property_definition",           "unary_expression",                   "binding_property",
-    "array_pattern",                 "object_pattern",                     "jsx_text",
-    "ts_function_type",              "ts_constructor_type",                "ts_method_signature",
-    "ts_call_signature_declaration", "ts_construct_signature_declaration", "ts_mapped_type",
-    "ts_module_declaration",         "ts_global_declaration",              "ts_this_parameter",
-    "member_expression",             "object_property",                    "ts_property_signature",
-    "ts_enum_member",                "ts_index_signature",
-};
-
-pub fn isSpecial(comptime name: []const u8) bool {
-    comptime {
-        @setEvalBranchQuota(200_000);
-        for (SPECIAL) |s| if (s.len == name.len and std.mem.eql(u8, s, name)) return true;
-        return false;
     }
 }

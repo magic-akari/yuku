@@ -1,8 +1,8 @@
 # yuku-codegen
 
-A high-performance JavaScript and TypeScript code generator written in Zig, powered by [Yuku](https://github.com/yuku-toolchain/yuku).
+A high-performance JavaScript and TypeScript code generator, powered by [Yuku](https://github.com/yuku-toolchain/yuku).
 
-Renders an ESTree / TypeScript-ESTree AST back to source code, with optional Source Map V3 output.
+Renders an ESTree / TypeScript-ESTree AST back to source code, with optional Source Map V3 output. Pure JavaScript with no native binary, it runs in Node.js, Bun, Deno, and the browser.
 
 ## Install
 

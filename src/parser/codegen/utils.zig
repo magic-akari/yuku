@@ -1,7 +1,7 @@
 const std = @import("std");
 const util = @import("util");
 
-/// True when `op` is a word operator that needs spaces to stay separate from its operands.
+/// True when `op` is a word operator such as `in` or `typeof`.
 pub fn isWordOp(op: []const u8) bool {
     return std.mem.eql(u8, op, "in") or std.mem.eql(u8, op, "instanceof") or
         std.mem.eql(u8, op, "typeof") or std.mem.eql(u8, op, "void") or
@@ -13,8 +13,7 @@ pub inline fn isIdCont(c: u8) bool {
     return c == '$' or c >= 0x80 or util.UnicodeId.canContinueId(c);
 }
 
-/// True when `s` is a valid IdentifierName. IdentifierStart is ID_Start plus
-/// `$` and `_`, IdentifierPart is ID_Continue plus `$`.
+/// True when `s` is a valid IdentifierName.
 pub fn isIdentifierName(s: []const u8) bool {
     if (s.len == 0) return false;
     var i: usize = 0;
@@ -32,8 +31,8 @@ pub fn isIdentifierName(s: []const u8) bool {
     return true;
 }
 
-/// Escape for `s[i]` when it would let output break out of an inline `<script>`, or null.
-/// Neutralizes `</script`, `<!--` and `-->` with a backslash the value ignores.
+/// The escape that keeps `s[i]` from ending an inline `<script>`, a backslash the value
+/// ignores before `</script`, `<!--`, or `-->`.
 pub fn scriptEscape(s: []const u8, i: usize) ?[]const u8 {
     return switch (s[i]) {
         '<' => if (scriptOpenAt(s, i)) "<\\" else null,
@@ -47,12 +46,11 @@ fn scriptOpenAt(s: []const u8, i: usize) bool {
     if (std.mem.startsWith(u8, rest, "!--")) return true;
     if (rest.len < 7 or rest[0] != '/' or !std.ascii.eqlIgnoreCase(rest[1..7], "script"))
         return false;
-    // `</script` ends the tag only when whitespace, `/`, `>`, or eof follows
+    // `</script` ends the tag only before whitespace, `/`, `>`, or the end
     return rest.len == 7 or std.ascii.isWhitespace(rest[7]) or rest[7] == '/' or rest[7] == '>';
 }
 
-/// Removes numeric separators. Returns `raw` unchanged when it has none and
-/// null when `buf` is too small.
+/// Removes numeric separators, null when `buf` is too small.
 pub fn stripUnderscores(raw: []const u8, buf: []u8) ?[]const u8 {
     if (std.mem.findScalar(u8, raw, '_') == null) return raw;
     if (raw.len > buf.len) return null;
@@ -72,8 +70,8 @@ pub fn isMinimalInteger(raw: []const u8) bool {
     return true;
 }
 
-/// Returns the shortest equivalent spelling of decimal `s`, rewriting the text
-/// exactly with no float round-trip. `scratch` and `s` must not alias.
+/// The shortest equal spelling of decimal `s`, rewritten as text with no float round-trip.
+/// `scratch` and `s` must not alias.
 pub fn shortestDecimal(s: []const u8, scratch: []u8) []const u8 {
     const exp_at = std.mem.findAny(u8, s, "eE") orelse s.len;
     const mantissa = s[0..exp_at];
@@ -154,11 +152,10 @@ fn writeFixed(scratch: []u8, d: []const u8, exp: i64) ?[]const u8 {
     return scratch[0 .. 1 + f];
 }
 
-/// True when a block comment's continuation lines are all blank or
-/// `*`-prefixed, so re-indenting cannot disturb them.
+/// True when every line after the first is blank or starts with `*`.
 pub fn isJsdocBody(value: []const u8) bool {
     var it = std.mem.splitScalar(u8, value, '\n');
-    _ = it.next(); // the first line follows `/*` and is never re-indented
+    _ = it.next();
     var multi = false;
     while (it.next()) |line| {
         multi = true;
@@ -168,20 +165,14 @@ pub fn isJsdocBody(value: []const u8) bool {
     return multi;
 }
 
-/// True when a block comment is a legal header or annotation kept under the `.some` filter.
+/// True when a block comment is a legal header or annotation.
 pub fn isSignificantBlockComment(value: []const u8) bool {
     if (value.len == 0) return false;
     if (value[0] == '!' or value[0] == '*') return true;
-    // annotations like `/* @__PURE__ */` may be spaced, `/*!` and `/**` never are
+    // `/* @__PURE__ */` may be spaced, `/*!` and `/**` never are
     const body = std.mem.trimStart(u8, value, &std.ascii.whitespace);
     if (body.len > 0 and (body[0] == '@' or body[0] == '#')) return true;
-    var i: usize = 0;
-    while (std.mem.findScalarPos(u8, value, i, '@')) |pos| {
-        const rest = value[pos..];
-        if (std.mem.startsWith(u8, rest, "@license") or
-            std.mem.startsWith(u8, rest, "@preserve") or
-            std.mem.startsWith(u8, rest, "@cc_on")) return true;
-        i = pos + 1;
-    }
-    return false;
+    return std.mem.find(u8, value, "@license") != null or
+        std.mem.find(u8, value, "@preserve") != null or
+        std.mem.find(u8, value, "@cc_on") != null;
 }

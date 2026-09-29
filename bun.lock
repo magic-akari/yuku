@@ -112,72 +112,6 @@
       "dependencies": {
         "@yuku-toolchain/types": "workspace:^",
       },
-      "optionalDependencies": {
-        "@yuku-codegen/binding-android-arm64": "0.13.0",
-        "@yuku-codegen/binding-darwin-arm64": "0.13.0",
-        "@yuku-codegen/binding-darwin-x64": "0.13.0",
-        "@yuku-codegen/binding-freebsd-x64": "0.13.0",
-        "@yuku-codegen/binding-linux-arm-gnu": "0.13.0",
-        "@yuku-codegen/binding-linux-arm-musl": "0.13.0",
-        "@yuku-codegen/binding-linux-arm64-gnu": "0.13.0",
-        "@yuku-codegen/binding-linux-arm64-musl": "0.13.0",
-        "@yuku-codegen/binding-linux-x64-gnu": "0.13.0",
-        "@yuku-codegen/binding-linux-x64-musl": "0.13.0",
-        "@yuku-codegen/binding-win32-arm64": "0.13.0",
-        "@yuku-codegen/binding-win32-x64": "0.13.0",
-      },
-    },
-    "npm/yuku-codegen-wasm": {
-      "name": "@yuku-codegen/wasm",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-android-arm64": {
-      "name": "@yuku-codegen/binding-android-arm64",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-darwin-arm64": {
-      "name": "@yuku-codegen/binding-darwin-arm64",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-darwin-x64": {
-      "name": "@yuku-codegen/binding-darwin-x64",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-freebsd-x64": {
-      "name": "@yuku-codegen/binding-freebsd-x64",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-linux-arm-gnu": {
-      "name": "@yuku-codegen/binding-linux-arm-gnu",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-linux-arm-musl": {
-      "name": "@yuku-codegen/binding-linux-arm-musl",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-linux-arm64-gnu": {
-      "name": "@yuku-codegen/binding-linux-arm64-gnu",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-linux-arm64-musl": {
-      "name": "@yuku-codegen/binding-linux-arm64-musl",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-linux-x64-gnu": {
-      "name": "@yuku-codegen/binding-linux-x64-gnu",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-linux-x64-musl": {
-      "name": "@yuku-codegen/binding-linux-x64-musl",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-win32-arm64": {
-      "name": "@yuku-codegen/binding-win32-arm64",
-      "version": "0.13.0",
-    },
-    "npm/yuku-codegen/@yuku-codegen/binding-win32-x64": {
-      "name": "@yuku-codegen/binding-win32-x64",
-      "version": "0.13.0",
     },
     "npm/yuku-parser": {
       "name": "yuku-parser",
@@ -320,32 +254,6 @@
     "@yuku-analyzer/binding-win32-x64": ["@yuku-analyzer/binding-win32-x64@workspace:npm/yuku-analyzer/@yuku-analyzer/binding-win32-x64"],
 
     "@yuku-analyzer/wasm": ["@yuku-analyzer/wasm@workspace:npm/yuku-analyzer-wasm"],
-
-    "@yuku-codegen/binding-android-arm64": ["@yuku-codegen/binding-android-arm64@workspace:npm/yuku-codegen/@yuku-codegen/binding-android-arm64"],
-
-    "@yuku-codegen/binding-darwin-arm64": ["@yuku-codegen/binding-darwin-arm64@workspace:npm/yuku-codegen/@yuku-codegen/binding-darwin-arm64"],
-
-    "@yuku-codegen/binding-darwin-x64": ["@yuku-codegen/binding-darwin-x64@workspace:npm/yuku-codegen/@yuku-codegen/binding-darwin-x64"],
-
-    "@yuku-codegen/binding-freebsd-x64": ["@yuku-codegen/binding-freebsd-x64@workspace:npm/yuku-codegen/@yuku-codegen/binding-freebsd-x64"],
-
-    "@yuku-codegen/binding-linux-arm-gnu": ["@yuku-codegen/binding-linux-arm-gnu@workspace:npm/yuku-codegen/@yuku-codegen/binding-linux-arm-gnu"],
-
-    "@yuku-codegen/binding-linux-arm-musl": ["@yuku-codegen/binding-linux-arm-musl@workspace:npm/yuku-codegen/@yuku-codegen/binding-linux-arm-musl"],
-
-    "@yuku-codegen/binding-linux-arm64-gnu": ["@yuku-codegen/binding-linux-arm64-gnu@workspace:npm/yuku-codegen/@yuku-codegen/binding-linux-arm64-gnu"],
-
-    "@yuku-codegen/binding-linux-arm64-musl": ["@yuku-codegen/binding-linux-arm64-musl@workspace:npm/yuku-codegen/@yuku-codegen/binding-linux-arm64-musl"],
-
-    "@yuku-codegen/binding-linux-x64-gnu": ["@yuku-codegen/binding-linux-x64-gnu@workspace:npm/yuku-codegen/@yuku-codegen/binding-linux-x64-gnu"],
-
-    "@yuku-codegen/binding-linux-x64-musl": ["@yuku-codegen/binding-linux-x64-musl@workspace:npm/yuku-codegen/@yuku-codegen/binding-linux-x64-musl"],
-
-    "@yuku-codegen/binding-win32-arm64": ["@yuku-codegen/binding-win32-arm64@workspace:npm/yuku-codegen/@yuku-codegen/binding-win32-arm64"],
-
-    "@yuku-codegen/binding-win32-x64": ["@yuku-codegen/binding-win32-x64@workspace:npm/yuku-codegen/@yuku-codegen/binding-win32-x64"],
-
-    "@yuku-codegen/wasm": ["@yuku-codegen/wasm@workspace:npm/yuku-codegen-wasm"],
 
     "@yuku-parser/binding-android-arm64": ["@yuku-parser/binding-android-arm64@workspace:npm/yuku-parser/@yuku-parser/binding-android-arm64"],
 

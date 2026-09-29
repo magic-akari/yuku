@@ -26,7 +26,7 @@ pub fn build(b: *std.Build) void {
         "parser-extension",
         "Path to a Zig source file supplying parser extension points (default: none)",
     );
-    // pins neither target nor optimize, so the fuzz graph below can share the instance
+    // pins neither target nor optimize, so the host tool graph below can share the instance
     const parser_extension = if (parser_extension_source) |source| b.createModule(.{
         .root_source_file = if (std.fs.path.isAbsolute(source))
             .{ .cwd_relative = source }
@@ -110,36 +110,52 @@ pub fn build(b: *std.Build) void {
     extension_tests.addImport("extension", reference_extension);
     test_step.dependOn(&b.addRunArtifact(b.addTest(.{ .root_module = extension_tests })).step);
 
-    const fuzz_util = b.createModule(.{
+    // host tools run fast with every assertion armed
+    const safe_util = b.createModule(.{
         .root_source_file = b.path("src/util/root.zig"),
         .target = b.graph.host,
         .optimize = .ReleaseSafe,
     });
-    const fuzz_parser = b.createModule(.{
+    const safe_parser = b.createModule(.{
         .root_source_file = b.path("src/parser/root.zig"),
         .target = b.graph.host,
         .optimize = .ReleaseSafe,
     });
-    fuzz_parser.addImport("util", fuzz_util);
-    fuzz_parser.addImport("codegen_options", codegen_options_module);
-    fuzz_parser.addImport("parser_extension", parser_extension);
+    safe_parser.addImport("util", safe_util);
+    safe_parser.addImport("codegen_options", codegen_options_module);
+    safe_parser.addImport("parser_extension", parser_extension);
     const fuzz_driver = b.createModule(.{
         .root_source_file = b.path("src/parser/testing/fuzz/main.zig"),
         .target = b.graph.host,
         .optimize = .ReleaseSafe,
     });
-    fuzz_driver.addImport("parser", fuzz_parser);
+    fuzz_driver.addImport("parser", safe_parser);
     const fuzz_exe = b.addExecutable(.{ .name = "fuzz", .root_module = fuzz_driver });
     const run_fuzz = b.addRunArtifact(fuzz_exe);
     run_fuzz.has_side_effects = true;
     const fuzz_step = b.step("fuzz", "Fuzz the JS/TS parser for crashes and memory bugs");
     fuzz_step.dependOn(&run_fuzz.step);
 
+    const codegen_reference_module = b.createModule(.{
+        .root_source_file = b.path("src/parser/testing/codegen/reference.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+    });
+    codegen_reference_module.addImport("parser", safe_parser);
+    const codegen_reference = b.addExecutable(.{
+        .name = "codegen-reference",
+        .root_module = codegen_reference_module,
+    });
+    const codegen_reference_step = b.step(
+        "codegen-reference",
+        "Build the Zig printer reference the JS printer is checked against",
+    );
+    codegen_reference_step.dependOn(&b.addInstallArtifact(codegen_reference, .{}).step);
+
     const napi_dep = b.dependency("napi_zig", .{});
 
     for ([_]struct { name: []const u8, tool: []const u8 }{
         .{ .name = "parser", .tool = "parser" },
-        .{ .name = "codegen", .tool = "code generator" },
         .{ .name = "analyzer", .tool = "semantic analyzer" },
     }) |lib| {
         napi_zig.addLib(b, napi_dep, .{
@@ -185,7 +201,6 @@ pub fn build(b: *std.Build) void {
 
     for ([_]struct { name: []const u8, root: []const u8 }{
         .{ .name = "yuku-parser", .root = "src/parser/ffi/wasm/parser.zig" },
-        .{ .name = "yuku-codegen", .root = "src/parser/ffi/wasm/codegen.zig" },
         .{ .name = "yuku-analyzer", .root = "src/parser/ffi/wasm/analyzer.zig" },
     }) |cfg| {
         const wasm_module = b.createModule(.{
@@ -241,12 +256,6 @@ pub fn build(b: *std.Build) void {
             .description = "Generate decode-analyzer.js for yuku-analyzer",
             .root = "tools/gen_analyzer_decoder.zig",
             .output = "decode-analyzer.js",
-        },
-        .{
-            .step = "gen-codegen-encoder",
-            .description = "Generate encode.js for yuku-codegen",
-            .root = "tools/gen_codegen_encoder.zig",
-            .output = "encode.js",
         },
         .{
             .step = "gen-walk-tables",

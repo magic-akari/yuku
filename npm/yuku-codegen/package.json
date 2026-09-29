@@ -1,46 +1,39 @@
 {
   "name": "yuku-codegen",
   "version": "0.13.0",
-  "description": "High-performance JavaScript/TypeScript code generator written in Zig",
+  "description": "JavaScript and TypeScript code generator for ESTree and TypeScript-ESTree ASTs: formatting, minification, TypeScript stripping, and source maps",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/yuku-toolchain/yuku"
   },
   "type": "module",
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
   "files": [
-    "index.js",
-    "index.d.ts",
-    "binding.js",
-    "encode.js"
+    "dist"
   ],
-  "optionalDependencies": {
-    "@yuku-codegen/binding-linux-x64-gnu": "0.13.0",
-    "@yuku-codegen/binding-linux-arm64-gnu": "0.13.0",
-    "@yuku-codegen/binding-linux-arm-gnu": "0.13.0",
-    "@yuku-codegen/binding-linux-x64-musl": "0.13.0",
-    "@yuku-codegen/binding-linux-arm64-musl": "0.13.0",
-    "@yuku-codegen/binding-linux-arm-musl": "0.13.0",
-    "@yuku-codegen/binding-darwin-x64": "0.13.0",
-    "@yuku-codegen/binding-darwin-arm64": "0.13.0",
-    "@yuku-codegen/binding-win32-x64": "0.13.0",
-    "@yuku-codegen/binding-win32-arm64": "0.13.0",
-    "@yuku-codegen/binding-freebsd-x64": "0.13.0",
-    "@yuku-codegen/binding-android-arm64": "0.13.0"
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@yuku-toolchain/types": "workspace:^"
   },
   "keywords": [
     "ast",
     "codegen",
     "estree",
-    "javascript",
-    "minifier",
-    "napi",
     "printer",
-    "typescript"
+    "minifier",
+    "sourcemap",
+    "typescript",
+    "javascript",
+    "yuku"
   ],
-  "dependencies": {
-    "@yuku-toolchain/types": "workspace:^"
-  }
+  "module": "./dist/index.js",
+  "sideEffects": false
 }

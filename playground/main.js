@@ -1,5 +1,5 @@
 import { parse, TokenKind } from "@yuku-parser/wasm";
-import { generate } from "@yuku-codegen/wasm";
+import { generate } from "yuku-codegen";
 import { analyze, SymbolFlags } from "@yuku-analyzer/wasm";
 import { CodeJar } from "https://esm.sh/codejar@4.2.0";
 import hljs from "https://esm.sh/highlight.js@11.10.0/lib/core";
@@ -741,7 +741,7 @@ function render() {
       comments: $("comments").value,
       indent: +$("indent").value,
     });
-    outView.innerHTML = hl(out, "typescript");
+    outView.innerHTML = hl(out.code, "typescript");
   } catch (e) {
     outView.textContent = String(e);
   }
