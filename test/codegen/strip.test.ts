@@ -30,3 +30,32 @@ test("a statement list that strips to nothing leaves no blank line", () => {
     }"
   `);
 });
+
+test("an item strip empties takes its separator with it", () => {
+  const source = [
+    "function f(this: T, a: number) {}",
+    "class C { abstract x: T; declare y: T; z = 1; }",
+    'import { type A, B } from "m";',
+    'export type { C } from "m";',
+    "export interface I {}",
+    "export default interface J {}",
+    "if (a) interface K {}",
+  ].join("\n");
+  expect(gen(source, { strip: true })).toMatchInlineSnapshot(`
+    "function f(a) {}
+    class C {
+      z = 1;
+    }
+    import { B } from "m";
+    if (a) ;"
+  `);
+});
+
+test("a this parameter goes with its comments", () => {
+  const source = "class C {\n  m(\n    // why\n    this: C,\n    a: number,\n  ) {}\n}";
+  expect(gen(source, { strip: true, comments: true })).toMatchInlineSnapshot(`
+    "class C {
+      m(a) {}
+    }"
+  `);
+});

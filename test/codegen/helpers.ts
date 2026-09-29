@@ -1,4 +1,10 @@
-import { parse, langFromPath, sourceTypeFromPath, type ParseOptions } from "yuku-parser";
+import {
+  parse,
+  langFromPath,
+  sourceTypeFromPath,
+  type ParseOptions,
+  type SourceLang,
+} from "yuku-parser";
 import { generate, type GenerateOptions } from "yuku-codegen";
 
 export function gen(
@@ -14,4 +20,20 @@ export function gen(
     ...parseOptions,
   });
   return generate(ast.program, options).code;
+}
+
+const CHAIN_LINKS = 2_000;
+
+/** Left-leaning chains nested far past the printers' recursion budgets. */
+export function deepChains(): { source: string; lang: SourceLang }[] {
+  const links: [string, SourceLang][] = [
+    [" + b", "js"],
+    [" || b", "js"],
+    [".b", "js"],
+    ["()", "js"],
+    ["[0]", "js"],
+    ["!.b<T>(c)`t`", "ts"],
+    [" as T satisfies U", "ts"],
+  ];
+  return links.map(([link, lang]) => ({ source: `x = a${link.repeat(CHAIN_LINKS)};`, lang }));
 }

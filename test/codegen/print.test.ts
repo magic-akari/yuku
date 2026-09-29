@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { gen } from "./helpers";
+import { deepChains, gen } from "./helpers";
 
 test("array holes keep their elisions", () => {
   expect(
@@ -203,4 +203,37 @@ test("each switch case statement starts on its own line, and compact keeps them 
   expect(gen(source, { format: "compact" }, "input.js")).toMatchInlineSnapshot(
     `"switch(x){case 0:a();case 1:b();break;case 2:case 3:{c()}default:switch(y){case 4:d()}}"`,
   );
+});
+
+test("chains deeper than the call stack print as written", () => {
+  for (const { source, lang } of deepChains()) {
+    expect(gen(source, {}, `input.${lang}`) === source, source.slice(0, 40)).toBe(true);
+  }
+});
+
+test("a member of a bare integer keeps the space before its dot", () => {
+  const source = "a = 1 .x; b = 1.0 .y; c = 0x1.z; d = 1..w; e = 1?.v;";
+  expect(gen(source, {}, "input.js")).toMatchInlineSnapshot(`
+    "a = 1 .x;
+    b = 1.0.y;
+    c = 0x1.z;
+    d = 1..w;
+    e = 1?.v;"
+  `);
+  expect(gen(source, { minify: true }, "input.js")).toMatchInlineSnapshot(
+    `"a=1 .x;b=1 .y;c=0x1.z;d=1 .w;e=1?.v"`,
+  );
+});
+
+test("line breaks in template text and JSDoc print as LF", () => {
+  const source = "x = `a\r\nb\rc`;\r\n/**\r\n * doc\r\n */\r\nfunction f() {}\r\n";
+  expect(gen(source, { comments: true }, "input.js")).toMatchInlineSnapshot(`
+    "x = \`a
+    b
+    c\`;
+    /**
+     * doc
+     */
+    function f() {}"
+  `);
 });

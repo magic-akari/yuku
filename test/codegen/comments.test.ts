@@ -135,6 +135,54 @@ test("a trailing same-line comment", () => {
   `);
 });
 
+test("comments around a parameter list stay beside it", () => {
+  expect(gen(`function f /* a */ (b /* c */) /* d */ {}`, ALL)).toMatchInlineSnapshot(
+    `"function f /* a */(b /* c */) /* d */ {}"`,
+  );
+});
+
+test("a list item's trailing line comment follows its separator", () => {
+  const source = [
+    "function f(",
+    "  a, // first",
+    "  b, // second",
+    ") {}",
+    "const o = {",
+    "  a: 1, // first",
+    "  b: 2, // second",
+    "};",
+    "let x = 1, // first",
+    "  y = 2;",
+    "enum E {",
+    "  A, // first",
+    "  B,",
+    "}",
+  ].join("\n");
+  expect(gen(source, ALL)).toMatchInlineSnapshot(`
+    "function f(a, // first
+      b // second
+    ) {}
+    const o = { a: 1, // first
+      b: 2 // second
+    };
+    let x = 1, // first
+      y = 2;
+    enum E {
+      A, // first
+      B
+    }"
+  `);
+  expect(gen(source, { ...ALL, format: "compact" })).toMatchInlineSnapshot(`
+    "function f(a,// first
+    b// second
+    ){}const o={a:1,// first
+    b:2// second
+    };let x=1,// first
+    y=2;enum E{A,// first
+    B}"
+  `);
+});
+
 test("a leading own-line comment", () => {
   expect(gen(`// hello\nconst x = 1;`, ALL)).toMatchInlineSnapshot(`
     "// hello
@@ -168,4 +216,28 @@ test("a compact block comment after `/` does not open a line comment", () => {
   expect(gen(`x = a / /*c*/ b;`, { ...ALL, format: "compact" }, "input.js")).toMatchInlineSnapshot(
     `"x=a/ /*c*/b"`,
   );
+});
+
+test("a comment breaking before a restricted operand keeps it parenthesized", () => {
+  const source =
+    "function* g() {\n  return (\n    // r\n    a\n  );\n  yield (\n    // y\n    b\n  );\n}";
+  const parseOptions = { preserveParens: false };
+  expect(gen(source, ALL, "input.js", parseOptions)).toMatchInlineSnapshot(`
+    "function* g() {
+      return (
+      // r
+      a);
+      yield (
+      // y
+      b);
+    }"
+  `);
+  expect(gen(source, { ...ALL, format: "compact" }, "input.js", parseOptions))
+    .toMatchInlineSnapshot(`
+    "function* g(){return (
+    // r
+    a);yield (
+    // y
+    b)}"
+  `);
 });

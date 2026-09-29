@@ -55,3 +55,10 @@ test("a compact source map starts each mapping on its token", () => {
     expect(segment?.[3], source).toBe(source.indexOf(token));
   }
 });
+
+test("the line after a hashbang maps to its own line", () => {
+  const source = "#!/usr/bin/env node\nx;\n";
+  const { code, map } = generate(parse(source).program, { sourceMap: { source } });
+  expect(code).toBe("#!/usr/bin/env node\nx;");
+  expect(map?.mappings).toBe("AAAA;AACA");
+});
