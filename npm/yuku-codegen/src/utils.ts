@@ -1,4 +1,5 @@
 export const CHAR_NUL = 0x00;
+export const CHAR_BACKSPACE = 0x08;
 export const CHAR_TAB = 0x09;
 export const CHAR_LF = 0x0a;
 export const CHAR_VT = 0x0b;
@@ -9,10 +10,12 @@ export const CHAR_BANG = 0x21;
 export const CHAR_DOUBLE_QUOTE = 0x22;
 export const CHAR_DOLLAR = 0x24;
 export const CHAR_SINGLE_QUOTE = 0x27;
+export const CHAR_STAR = 0x2a;
 export const CHAR_PLUS = 0x2b;
 export const CHAR_MINUS = 0x2d;
 export const CHAR_DOT = 0x2e;
 export const CHAR_SLASH = 0x2f;
+export const CHAR_0 = 0x30;
 export const CHAR_LT = 0x3c;
 export const CHAR_EQUALS = 0x3d;
 export const CHAR_GT = 0x3e;
@@ -23,7 +26,6 @@ export const CHAR_OPEN_BRACE = 0x7b;
 export const CHAR_LS = 0x2028;
 export const CHAR_PS = 0x2029;
 
-const CHAR_0 = 0x30;
 const CHAR_9 = 0x39;
 const CHAR_UNDERSCORE = 0x5f;
 
@@ -54,7 +56,7 @@ function isAsciiWhitespace(code: number): boolean {
   return code === CHAR_SPACE || (code >= CHAR_TAB && code <= CHAR_CR);
 }
 
-function isAsciiDigit(code: number): boolean {
+export function isAsciiDigit(code: number): boolean {
   return code >= CHAR_0 && code <= CHAR_9;
 }
 
@@ -204,7 +206,7 @@ export function trimStartSpaceTab(line: string): string {
 export function isSignificantBlockComment(value: string): boolean {
   if (value.length === 0) return false;
   const first = value.charCodeAt(0);
-  if (first === CHAR_BANG || first === 0x2a) return true;
+  if (first === CHAR_BANG || first === CHAR_STAR) return true;
   if (/^[ \t\n\v\f\r]*[@#]/.test(value)) return true;
   return value.includes("@license") || value.includes("@preserve") || value.includes("@cc_on");
 }

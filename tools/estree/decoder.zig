@@ -1370,7 +1370,7 @@ fn writeSpecialCase(w: *Writer, comptime name: []const u8) !void {
             \\    }};
         , .{ sid, sb, db });
     } else if (comptime eql(u8, name, "ts_this_parameter")) {
-        // an Identifier named this, ts-estree convention, the encoder matches it by that name
+        // an Identifier named this, the ts-estree convention
         const sta = comptime slotOf(ast.TSThisParameter, "type_annotation");
         try emit(w,
             \\return {{

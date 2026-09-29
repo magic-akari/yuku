@@ -13,7 +13,7 @@ import {
   isIdCont,
 } from "./utils.js";
 
-// where `{`, `function`, `class`, or `let[` would misparse as a statement
+// where a leading `{`, `function`, `class`, or `let[` would misparse as a block or declaration
 export const LEAD_NONE = 0;
 export const LEAD_STMT = 1;
 export const LEAD_ARROW = 2;
@@ -44,8 +44,11 @@ const SPACED_ASCII: string[] = [];
 for (let c = 0; c < 128; c++) SPACED_ASCII.push(" " + String.fromCharCode(c));
 
 const SPACES: string[] = [""];
+const SPACES_CACHED_MAX = 256;
 
 function spaces(n: number): string {
+  if (n < SPACES.length) return SPACES[n]!;
+  if (n >= SPACES_CACHED_MAX) return " ".repeat(n);
   while (SPACES.length <= n) SPACES.push(SPACES[SPACES.length - 1] + " ");
   return SPACES[n]!;
 }
@@ -111,6 +114,7 @@ export class Output {
     this.lastChar = last;
   }
 
+  // a name starts with an identifier character, so it neither fuses nor drops a held space
   writeName(s: string): void {
     this.lead = LEAD_NONE;
     const held = this.heldSpaces;
@@ -167,12 +171,6 @@ export class Output {
     this.heldLiteral = false;
   }
 
-  comma(): void {
-    this.writeToken(",");
-    this.space();
-    this.spillWhenFull();
-  }
-
   endLine(indent: number): void {
     if (this.length() === 0) return;
     if (this.lastChar !== CHAR_LF) {
@@ -186,6 +184,7 @@ export class Output {
   recordMapping(span: Span): void {
     if (this.mappings === null) return;
     const start = span.start;
+    // a node without a span or with a zero span is synthetic
     if (typeof start !== "number") return;
     if (start === 0 && span.end === 0) return;
     this.mapStart = start;
@@ -243,7 +242,6 @@ export class Output {
 
   // compact mode drops a keyword's lone trailing space before punctuation, never a literal's
   private dropHeldSpace(next: number): void {
-    if (this.pretty) return;
     if (this.heldSpaces !== 1 || this.heldLiteral) return;
     if (this.length() === 0) return;
     if (isIdCont(this.lastChar) && !isIdCont(next)) this.heldSpaces = 0;

@@ -3,7 +3,9 @@ import type * as T from "@yuku-toolchain/types";
 import { LEAD_ARROW, LEAD_EXPORT_DEFAULT, LEAD_NONE, LEAD_STMT, Output } from "./output.js";
 import type { Mappings } from "./sourcemap.js";
 import {
+  CHAR_0,
   CHAR_BACKSLASH,
+  CHAR_BACKSPACE,
   CHAR_BACKTICK,
   CHAR_CR,
   CHAR_DOLLAR,
@@ -20,6 +22,7 @@ import {
   CHAR_TAB,
   CHAR_VT,
   hasLineTerminator,
+  isAsciiDigit,
   isBareInteger,
   isIdentifierName,
   isJsdocBody,
@@ -179,7 +182,6 @@ const TYPE_CONTEXT = new Set([
 
 const FIXED_STRING = table({
   Super: "super",
-  ThisExpression: "this",
   TSThisType: "this",
   TSNullKeyword: "null",
   TSAnyKeyword: "any",
@@ -304,26 +306,21 @@ class Printer extends Output {
     if (this.hasPrintedComments(node)) return false;
     switch (node.type) {
       case "VariableDeclaration":
-        return node.declare === true;
       case "FunctionDeclaration":
       case "FunctionExpression":
-        return node.declare === true;
-      case "TSDeclareFunction":
-      case "TSEmptyBodyFunctionExpression":
-        return true;
       case "ClassDeclaration":
       case "ClassExpression":
-        return node.declare === true;
-      case "TSAbstractMethodDefinition":
-        return true;
-      case "MethodDefinition":
-        return node.value.body == null;
       case "PropertyDefinition":
       case "AccessorProperty":
         return node.declare === true;
+      case "TSDeclareFunction":
+      case "TSEmptyBodyFunctionExpression":
+      case "TSAbstractMethodDefinition":
       case "TSAbstractPropertyDefinition":
       case "TSAbstractAccessorProperty":
         return true;
+      case "MethodDefinition":
+        return node.value.body == null;
       case "ImportDeclaration":
         return (
           node.importKind === "type" ||
@@ -342,7 +339,6 @@ class Printer extends Output {
       case "ExportDefaultDeclaration":
         return isDeclaration(node.declaration) && this.stripsToNothing(node.declaration);
       case "ExportAllDeclaration":
-        return node.exportKind === "type";
       case "ExportSpecifier":
         return node.exportKind === "type";
     }
@@ -352,7 +348,7 @@ class Printer extends Output {
   hasPrintedComments(node: Node): boolean {
     if (this.comments === "none") return false;
     const list = node.comments;
-    if (list === undefined) return false;
+    if (list == null) return false;
     for (const c of list) {
       const printed =
         c.position === "before" ? node !== this.skipLeadingOf : c.position === "after";
@@ -453,7 +449,7 @@ class Printer extends Output {
     const inner = wrap ? 0 : ctx & ~CTX_ITEM;
     if (wrap) this.writeToken("(");
     const list = this.comments !== "none" ? node.comments : undefined;
-    if (list !== undefined && list.length > 0) {
+    if (list != null && list.length > 0) {
       const savedLead = this.lead;
       this.emitLeadingComments(node, list);
       this.lead = savedLead;
@@ -517,6 +513,7 @@ class Printer extends Output {
         // minify's `!0` ranks as unary
         if (this.minify && typeof value === "boolean") return PREC_UNARY;
         const raw: unknown = (node as T.Literal).raw;
+        // a negative number without a raw lexeme prints as a negation
         if (typeof raw !== "string" && isNegativeNumber(value)) return PREC_UNARY;
         return PREC_GROUPING;
       }
@@ -914,7 +911,7 @@ class Printer extends Output {
     let commented = false;
     if (this.comments !== "none") {
       const list = node.comments;
-      if (list !== undefined && list.length > 0) {
+      if (list != null && list.length > 0) {
         commented = true;
         const savedLead = this.lead;
         this.emitLeadingComments(node, list);
@@ -1179,10 +1176,10 @@ class Printer extends Output {
     this.printBlock(s.body, body, s);
   }
 
-  // an escaped `"use strict"` is not a directive, so the raw lexeme must survive
   emitDirective(d: T.Directive): void {
     const e = d.expression;
     if (e.type === "Literal" && typeof e.value === "string") {
+      // an escaped `"use strict"` is not a directive, so the raw lexeme must survive
       if (typeof e.raw === "string" && e.raw.length >= 2) this.writeToken(e.raw);
       else this.writeToken(quoteVerbatim(d.directive));
     } else {
@@ -1436,24 +1433,28 @@ class Printer extends Output {
   }
 
   emitList(items: readonly (Node | null)[]): void {
+    this.emitItems(items, 0);
+  }
+
+  emitItems(items: readonly (Node | null)[], ctx: number): void {
     const depth = this.indentDepth;
     for (let i = 0; i < items.length; i++) {
-      this.emitExpr(items[i], CTX_ITEM);
+      this.emitExpr(items[i], ctx | CTX_ITEM);
       this.closeItem(i + 1 < items.length, depth);
     }
     this.closeList(depth);
   }
 
   // an item's separator precedes its trailing comments, so a line comment cannot swallow it
-  closeItem(separated: boolean, depth: number): void {
+  closeItem(separated: boolean, hangDepth: number): void {
     const owed = this.owed;
     this.owed = null;
     if (separated) this.writeToken(",");
     if (owed !== null) this.emitTrailingComments(owed.comments!);
     if (!separated) return;
-    if (depth >= 0 && this.indentDepth === depth && this.atLineStart()) {
+    if (hangDepth >= 0 && this.indentDepth === hangDepth && this.atLineStart()) {
       // the rest of the list hangs one level deeper than the line it opened on
-      this.indentDepth = depth + 1;
+      this.indentDepth = hangDepth + 1;
       this.breakLine();
     }
     if (!this.atLineStart()) this.space();
@@ -1467,13 +1468,7 @@ class Printer extends Output {
   }
 
   emitSequenceExpression(e: T.SequenceExpression, ctx: number): void {
-    const exprs = e.expressions;
-    const depth = this.indentDepth;
-    for (let i = 0; i < exprs.length; i++) {
-      this.emitExpr(exprs[i], PREC_ASSIGNMENT | (ctx & CTX_NO_IN) | CTX_ITEM);
-      this.closeItem(i + 1 < exprs.length, depth);
-    }
-    this.closeList(depth);
+    this.emitItems(e.expressions, PREC_ASSIGNMENT | (ctx & CTX_NO_IN));
   }
 
   emitConditionalExpression(e: T.ConditionalExpression, ctx: number): void {
@@ -1505,7 +1500,7 @@ class Printer extends Output {
 
   emitAssignmentExpression(e: T.AssignmentExpression, ctx: number): void {
     this.emitAssignTarget(e.left, 0);
-    this.writeSpaced(LEAD_SPACED_OPERATOR[e.operator] ?? " " + e.operator, e.operator);
+    this.writeSpaced(LEAD_SPACED_OPERATOR[e.operator]!, e.operator);
     this.space();
     this.emitExpr(e.right, PREC_ASSIGNMENT | (ctx & CTX_NO_IN));
   }
@@ -1628,12 +1623,7 @@ class Printer extends Output {
 
   printArgList(args: readonly Node[]): void {
     this.writeToken("(");
-    const depth = this.indentDepth;
-    for (let i = 0; i < args.length; i++) {
-      this.emitExpr(args[i], PREC_ASSIGNMENT | CTX_ITEM);
-      this.closeItem(i + 1 < args.length, depth);
-    }
-    this.closeList(depth);
+    this.emitItems(args, PREC_ASSIGNMENT);
     this.writeToken(")");
   }
 
@@ -1646,7 +1636,8 @@ class Printer extends Output {
     this.writeToken("(");
     this.emitValue(e.source);
     if (e.options != null) {
-      this.comma();
+      this.writeToken(",");
+      this.space();
       this.emitValue(e.options);
     }
     this.writeToken(")");
@@ -1666,6 +1657,7 @@ class Printer extends Output {
     if ("regex" in lit && lit.regex != null) return this.emitRegExpLiteral(lit);
     if ("bigint" in lit && typeof lit.bigint === "string") return this.emitBigIntLiteral(lit);
     const raw = lit.raw;
+    // a number JSON turned into null, such as `1e999`, still has its raw lexeme
     if (typeof raw === "string" && raw !== "null") return this.writeNumericRaw(raw);
     this.writeToken("null");
   }
@@ -1756,9 +1748,11 @@ class Printer extends Output {
     const pattern = lit.regex.pattern;
     const raw = typeof lit.raw === "string" ? lit.raw : "";
     const slash = raw.lastIndexOf("/");
+    // the parser sorts `regex.flags`, the raw lexeme keeps their source order
     const flags = slash > 0 ? raw.slice(slash + 1) : lit.regex.flags;
     this.writeToken("/");
-    this.writeLiteral(pattern);
+    // an empty pattern would open a line comment
+    this.writeLiteral(pattern.length > 0 ? pattern : "(?:)");
     this.writeLiteral("/");
     this.writeLiteral(flags);
   }
@@ -1794,16 +1788,16 @@ class Printer extends Output {
     let start = 0;
     for (let i = 0; i < s.length; i++) {
       const code = s.charCodeAt(i);
-      let esc: string | null = null;
+      let escape: string | null = null;
       if (isLoneSurrogateAt(s, i)) {
-        esc = surrogateEscape(code);
+        escape = surrogateEscape(code);
       } else if (scriptSafe && (code === CHAR_LT || code === CHAR_GT)) {
-        esc = scriptEscape(s, i);
+        escape = scriptEscape(s, i);
       }
-      if (esc === null) esc = templateEscape(s, i, code);
-      if (esc === null) continue;
+      if (escape === null) escape = templateEscape(s, i, code);
+      if (escape === null) continue;
       if (i > start) this.writeLiteral(s.slice(start, i));
-      this.writeLiteral(esc);
+      this.writeLiteral(escape);
       start = i + 1;
     }
     if (start < s.length) this.writeLiteral(s.slice(start));
@@ -1816,14 +1810,15 @@ class Printer extends Output {
     let start = 0;
     for (let i = first; i < raw.length; i++) {
       const code = raw.charCodeAt(i);
-      let esc: string | null;
-      if (code === CHAR_CR) esc = "\n";
-      else if (scriptSafe && (code === CHAR_LT || code === CHAR_GT)) {
-        esc = scriptEscape(raw, i);
-      } else continue;
-      if (esc === null) continue;
+      let escape: string | null = null;
+      if (code === CHAR_CR) {
+        escape = "\n";
+      } else if (scriptSafe && (code === CHAR_LT || code === CHAR_GT)) {
+        escape = scriptEscape(raw, i);
+      }
+      if (escape === null) continue;
       if (i > start) this.writeLiteral(raw.slice(start, i));
-      this.writeLiteral(esc);
+      this.writeLiteral(escape);
       if (code === CHAR_CR && raw.charCodeAt(i + 1) === CHAR_LF) i++;
       start = i + 1;
     }
@@ -1832,7 +1827,7 @@ class Printer extends Output {
 
   emitIdentifier(id: T.Identifier): void {
     const definite = this.takeDefinite();
-    if (!this.strip && id.decorators !== undefined) this.printDecorators(id.decorators);
+    if (!this.strip && id.decorators != null) this.printDecorators(id.decorators);
     this.writeName(id.name);
     this.printBindingSuffix(id.optional === true, definite, id.typeAnnotation);
   }
@@ -1855,7 +1850,7 @@ class Printer extends Output {
   }
 
   emitAssignmentPattern(p: T.AssignmentPattern): void {
-    if (!this.strip && p.decorators !== undefined) this.printDecorators(p.decorators);
+    if (!this.strip && p.decorators != null) this.printDecorators(p.decorators);
     this.emit(p.left);
     if (!this.strip && p.optional === true) this.writeToken("?");
     this.emit(p.typeAnnotation);
@@ -1864,7 +1859,7 @@ class Printer extends Output {
   }
 
   emitRestElement(r: T.RestElement): void {
-    if (!this.strip && r.decorators !== undefined) this.printDecorators(r.decorators);
+    if (!this.strip && r.decorators != null) this.printDecorators(r.decorators);
     this.writeToken("...");
     this.emit(r.argument);
     if (!this.strip && r.optional === true) this.writeToken("?");
@@ -1873,7 +1868,7 @@ class Printer extends Output {
 
   emitArrayPattern(p: T.ArrayPattern): void {
     const definite = this.takeDefinite();
-    if (!this.strip && p.decorators !== undefined) this.printDecorators(p.decorators);
+    if (!this.strip && p.decorators != null) this.printDecorators(p.decorators);
     this.writeToken("[");
     const elements = p.elements;
     const last = elements.length > 0 ? elements[elements.length - 1] : null;
@@ -1899,7 +1894,7 @@ class Printer extends Output {
 
   emitObjectPattern(p: T.ObjectPattern): void {
     const definite = this.takeDefinite();
-    if (!this.strip && p.decorators !== undefined) this.printDecorators(p.decorators);
+    if (!this.strip && p.decorators != null) this.printDecorators(p.decorators);
     this.writeToken("{");
     const props = p.properties;
     const last = props.length > 0 ? props[props.length - 1] : null;
@@ -2000,7 +1995,7 @@ class Printer extends Output {
     this.emit(a.returnType);
     this.writeSpaced(" =>", "=>");
     this.space();
-    if (a.expression) {
+    if (a.body.type !== "BlockStatement") {
       this.lead = LEAD_ARROW;
       this.emitExpr(a.body, PREC_ASSIGNMENT | (ctx & CTX_NO_IN));
     } else {
@@ -2055,7 +2050,7 @@ class Printer extends Output {
       this.emitExpr(c.superClass, PREC_CALL);
       this.emit(c.superTypeArguments);
     }
-    if (!this.strip && c.implements !== undefined && c.implements.length > 0) {
+    if (!this.strip && c.implements != null && c.implements.length > 0) {
       this.writeKeyword(" implements");
       this.emitList(c.implements);
     }
@@ -2166,7 +2161,7 @@ class Printer extends Output {
   }
 
   printDecorators(decs: readonly Node[] | undefined): void {
-    if (decs === undefined || decs.length === 0) return;
+    if (decs == null || decs.length === 0) return;
     const carry = this.mapStart;
     for (let i = 0; i < decs.length; i++) {
       this.emit(decs[i]);
@@ -2305,7 +2300,7 @@ class Printer extends Output {
   }
 
   printAttributes(attrs: readonly Node[] | undefined): void {
-    if (attrs === undefined || attrs.length === 0) return;
+    if (attrs == null || attrs.length === 0) return;
     this.writeKeyword(" with");
     this.writeToken("{");
     this.space();
@@ -2594,7 +2589,8 @@ class Printer extends Output {
     this.writeToken("import(");
     this.emit(t.source);
     if (t.options != null) {
-      this.comma();
+      this.writeToken(",");
+      this.space();
       this.emit(t.options);
     }
     this.writeToken(")");
@@ -2763,6 +2759,7 @@ class Printer extends Output {
       for (let i = 0; i < list.length; i++) {
         this.newline();
         this.emitExpr(list[i], CTX_ITEM);
+        // members own their lines, so the list never hangs
         this.closeItem(i + 1 < list.length, -1);
       }
       this.indentDepth--;
@@ -2780,13 +2777,13 @@ function trimEndCr(line: string): string {
 
 function hasComments(node: Node): boolean {
   const list = node.comments;
-  return list !== undefined && list.length > 0;
+  return list != null && list.length > 0;
 }
 
 function isPlainIdentifier(id: T.Identifier): boolean {
   if (id.typeAnnotation != null) return false;
   if (id.optional === true) return false;
-  return id.decorators === undefined || id.decorators.length === 0;
+  return id.decorators == null || id.decorators.length === 0;
 }
 
 function isNegativeNumber(value: unknown): boolean {
@@ -3008,14 +3005,14 @@ function stringEscape(s: string, i: number, code: number, quote: number): string
       return "\\r";
     case CHAR_TAB:
       return "\\t";
-    case 0x08:
+    case CHAR_BACKSPACE:
       return "\\b";
     case CHAR_FF:
       return "\\f";
     case CHAR_VT:
       return "\\v";
     case CHAR_NUL:
-      return isDigitAt(s, i + 1) ? "\\x00" : "\\0";
+      return isAsciiDigit(s.charCodeAt(i + 1)) ? "\\x00" : "\\0";
   }
   if (code === quote) return quote === CHAR_DOUBLE_QUOTE ? '\\"' : "\\'";
   return null;
@@ -3032,21 +3029,13 @@ function templateEscape(s: string, i: number, code: number): string | null {
     case CHAR_CR:
       return "\\r";
     case CHAR_NUL:
-      return isDigitAt(s, i + 1) ? "\\x00" : "\\0";
+      return isAsciiDigit(s.charCodeAt(i + 1)) ? "\\x00" : "\\0";
   }
   return null;
 }
 
-function isDigitAt(s: string, i: number): boolean {
-  const code = s.charCodeAt(i);
-  return code >= 0x30 && code <= 0x39;
-}
-
 function isDecimal(raw: string): boolean {
-  if (raw.length < 2 || raw.charCodeAt(0) !== 0x30) return true;
-  const radix = raw.charCodeAt(1) | 0x20;
-  if (radix === 0x78 || radix === 0x6f || radix === 0x62) return false;
-  return !/^0[0-7]+$/.test(raw);
+  return !/^0(?:[xob]|[0-7]+$)/i.test(raw);
 }
 
 function shortestNumber(raw: string): string {
@@ -3056,7 +3045,11 @@ function shortestNumber(raw: string): string {
   if (cleaned === null) return raw;
   if (!decimal) return cleaned;
   // `010` is legacy octal and `08` sloppy decimal
-  if (cleaned.length > 1 && cleaned.charCodeAt(0) === 0x30 && isDigitAt(cleaned, 1)) {
+  if (
+    cleaned.length > 1 &&
+    cleaned.charCodeAt(0) === CHAR_0 &&
+    isAsciiDigit(cleaned.charCodeAt(1))
+  ) {
     return cleaned;
   }
   return shortestDecimal(cleaned);

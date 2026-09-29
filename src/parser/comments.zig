@@ -92,12 +92,12 @@ const Ctx = struct {
         self: *Ctx,
         node: ast.NodeIndex,
         node_span: ast.Span,
-        parent: ast.NodeIndex,
+        parent_host: ast.NodeIndex,
     ) Error!void {
         if (self.cursor >= self.raw.len) return;
         if (self.raw[self.cursor].span.start >= node_span.end) return;
-        const host = if (self.hosts(node)) node else parent;
-        std.debug.assert(self.hosts(host));
+        const inside_host = if (self.hosts(node)) node else parent_host;
+        std.debug.assert(self.hosts(inside_host));
 
         const checkpoint = self.scratch.items.len;
         defer self.scratch.shrinkRetainingCapacity(checkpoint);
@@ -109,13 +109,13 @@ const Ctx = struct {
         var prev_idx: ast.NodeIndex = .null;
         var prev_end: u32 = 0;
         for (children) |child| {
-            try self.consumeBetween(host, prev_idx, prev_end, child.idx, child.start);
-            try self.walkAt(child.idx, .{ .start = child.start, .end = child.end }, host);
+            try self.consumeBetween(inside_host, prev_idx, prev_end, child.idx, child.start);
+            try self.walkAt(child.idx, .{ .start = child.start, .end = child.end }, inside_host);
             prev_idx = child.idx;
             prev_end = child.end;
         }
 
-        try self.consumeBetween(host, prev_idx, prev_end, .null, node_span.end);
+        try self.consumeBetween(inside_host, prev_idx, prev_end, .null, node_span.end);
     }
 
     // a parameter list has no ESTree node, so it bounds the comments inside its parens but
@@ -169,12 +169,11 @@ const Ctx = struct {
         next_idx: ast.NodeIndex,
         next_start: u32,
     ) Error!void {
+        const has_prev = prev_idx != .null and self.hosts(prev_idx);
+        const has_next = next_idx != .null and self.hosts(next_idx);
         while (self.cursor < self.raw.len) {
             const c = &self.raw[self.cursor];
             if (c.span.start >= next_start) return;
-
-            const has_prev = prev_idx != .null and self.hosts(prev_idx);
-            const has_next = next_idx != .null and self.hosts(next_idx);
 
             if (has_prev and has_next) {
                 if (self.sameLine(c.span.end, next_start)) {

@@ -10,7 +10,6 @@ const source_maps = @import("codegen_options").source_maps;
 
 const Allocator = std.mem.Allocator;
 const Output = output.Output;
-const Lead = output.Lead;
 const Tree = ast.Tree;
 const NodeIndex = ast.NodeIndex;
 const NodeData = ast.NodeData;
@@ -77,6 +76,9 @@ pub fn generate(allocator: Allocator, tree: *Tree, options: Options) Error!Resul
     var p = try Printer.init(allocator, tree, options);
     defer p.deinit();
     try p.emit(tree.root);
+    std.debug.assert(p.owed == .null);
+    std.debug.assert(p.restricted == null);
+    std.debug.assert(p.indent_depth == 0);
 
     const code = try p.out.code.toOwnedSlice(allocator);
     errdefer allocator.free(code);
@@ -158,7 +160,7 @@ const Printer = struct {
     }
 
     inline fn pretty(self: *const Self) bool {
-        return self.options.format == .pretty;
+        return self.out.pretty;
     }
 
     inline fn nodeData(self: *const Self, idx: NodeIndex) NodeData {
@@ -176,32 +178,43 @@ const Printer = struct {
     }
 
     fn emitList(self: *Self, items: IndexRange) Error!void {
-        const list = self.tree.extra(items);
+        try self.emitItems(self.tree.extra(items), .null, .{});
+    }
+
+    fn emitItems(self: *Self, items: []const NodeIndex, rest: NodeIndex, ctx: Ctx) Error!void {
+        var item_ctx = ctx;
+        item_ctx.item = true;
         const depth = self.indent_depth;
-        for (list, 0..) |x, i| {
-            try self.emitExpr(x, .{ .item = true });
-            try self.closeItem(i + 1 < list.len, depth);
+        for (items, 0..) |x, i| {
+            try self.emitExpr(x, item_ctx);
+            try self.closeItem(i + 1 < items.len or rest != .null, depth);
+        }
+        if (rest != .null) {
+            try self.emitExpr(rest, item_ctx);
+            try self.closeItem(false, depth);
         }
         try self.closeList(depth);
     }
 
     // an item's separator precedes its trailing comments, so a line comment cannot swallow it
-    fn closeItem(self: *Self, separated: bool, depth: ?u32) Error!void {
+    fn closeItem(self: *Self, separated: bool, hang_depth: ?u32) Error!void {
         const owed = self.owed;
         self.owed = .null;
         if (separated) try self.out.writeByte(',');
         if (owed != .null) try self.emitTrailingComments(self.tree.commentsOf(owed));
         if (!separated) return;
-        if (depth) |d| if (self.indent_depth == d and self.out.atLineStart()) {
+        if (hang_depth) |depth| if (self.indent_depth == depth and self.out.atLineStart()) {
             // the rest of the list hangs one level deeper than the line it opened on
-            self.indent_depth = d + 1;
+            self.indent_depth = depth + 1;
             try self.breakLine();
         };
         if (!self.out.atLineStart()) try self.out.space();
     }
 
     fn closeList(self: *Self, depth: u32) Error!void {
+        std.debug.assert(self.owed == .null);
         if (self.indent_depth == depth) return;
+        std.debug.assert(self.indent_depth == depth + 1);
         self.indent_depth = depth;
         if (self.out.atLineStart()) try self.breakLine();
     }
@@ -419,6 +432,7 @@ const Printer = struct {
 
     fn openLink(self: *Self, idx: NodeIndex, ctx: Ctx) Error!Link {
         std.debug.assert(isChainLink(self.tagOf(idx)));
+        std.debug.assert(!ctx.item);
         const wrap = self.needsParens(idx, ctx);
         if (wrap) try self.out.writeByte('(');
         const scope: CommentScope = if (self.options.comments != .none)
@@ -1247,17 +1261,8 @@ const Printer = struct {
         e: *const ast.SequenceExpression,
         ctx: Ctx,
     ) Error!void {
-        const list = self.tree.extra(e.expressions);
-        const depth = self.indent_depth;
-        for (list, 0..) |x, i| {
-            try self.emitExpr(x, .{
-                .prec = Precedence.Assignment,
-                .no_in = ctx.no_in,
-                .item = true,
-            });
-            try self.closeItem(i + 1 < list.len, depth);
-        }
-        try self.closeList(depth);
+        const expression_ctx: Ctx = .{ .prec = Precedence.Assignment, .no_in = ctx.no_in };
+        try self.emitItems(self.tree.extra(e.expressions), .null, expression_ctx);
     }
 
     fn emit_parenthesized_expression(
@@ -1452,13 +1457,7 @@ const Printer = struct {
 
     fn printArgList(self: *Self, args: IndexRange) Error!void {
         try self.out.writeByte('(');
-        const list = self.tree.extra(args);
-        const depth = self.indent_depth;
-        for (list, 0..) |x, i| {
-            try self.emitExpr(x, .{ .prec = Precedence.Assignment, .item = true });
-            try self.closeItem(i + 1 < list.len, depth);
-        }
-        try self.closeList(depth);
+        try self.emitItems(self.tree.extra(args), .null, .{ .prec = Precedence.Assignment });
         try self.out.writeByte(')');
     }
 
@@ -1747,16 +1746,7 @@ const Printer = struct {
         const list = self.tree.extra(p.properties);
         const has_any = list.len > 0 or p.rest != .null;
         if (has_any) try self.out.space();
-        const depth = self.indent_depth;
-        for (list, 0..) |x, i| {
-            try self.emitExpr(x, .{ .item = true });
-            try self.closeItem(i + 1 < list.len or p.rest != .null, depth);
-        }
-        if (p.rest != .null) {
-            try self.emitExpr(p.rest, .{ .item = true });
-            try self.closeItem(false, depth);
-        }
-        try self.closeList(depth);
+        try self.emitItems(list, p.rest, .{});
         if (has_any and !self.out.atLineStart()) try self.out.space();
         try self.out.writeByte('}');
         try self.printBindingSuffix(p.optional, definite, p.type_annotation);
@@ -1864,6 +1854,7 @@ const Printer = struct {
     }
 
     fn printParams(self: *Self, idx: NodeIndex) Error!void {
+        std.debug.assert(self.tree.commentsOf(idx).len == 0);
         const params = self.tree.data(idx).formal_parameters;
         try self.out.writeByte('(');
         try self.emitKeptItems(self.tree.extra(params.items), params.rest);
@@ -2691,6 +2682,7 @@ const Printer = struct {
             for (list, 0..) |m, i| {
                 try self.newline();
                 try self.emitExpr(m, .{ .item = true });
+                // members own their lines, so the list never hangs
                 try self.closeItem(i + 1 < list.len, null);
             }
             self.indent_depth -= 1;

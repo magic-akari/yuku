@@ -9,8 +9,8 @@ const source_maps = @import("codegen_options").source_maps;
 const Allocator = std.mem.Allocator;
 const Error = Allocator.Error;
 
-/// Where `{`, `function`, `class`, or `let[` would misparse as a statement.
-pub const Lead = enum { none, stmt, arrow, export_default };
+// where a leading `{`, `function`, `class`, or `let[` would misparse as a block or declaration
+const Lead = enum { none, stmt, arrow, export_default };
 
 pub const Output = struct {
     allocator: Allocator,
@@ -103,11 +103,6 @@ pub const Output = struct {
         if (self.pretty) try self.writeByte(' ');
     }
 
-    pub inline fn comma(self: *Output) Error!void {
-        try self.writeByte(',');
-        try self.space();
-    }
-
     /// Ends the line unless it is empty and holds `indent` spaces for the next one.
     pub fn endLine(self: *Output, indent: u32) Error!void {
         const items = self.code.items;
@@ -131,6 +126,7 @@ pub const Output = struct {
     }
 
     pub inline fn markBareInteger(self: *Output) void {
+        std.debug.assert(self.held_spaces == 0);
         self.bare_integer_end = self.code.items.len;
     }
 

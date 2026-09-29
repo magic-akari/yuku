@@ -174,6 +174,7 @@ class VlqWriter {
       bytes[at++] = CHAR_COMMA;
     }
     at = writeVlq(bytes, at, genCol - this.genCol);
+    // the source index delta, always zero with one source
     bytes[at++] = VLQ_ZERO;
     at = writeVlq(bytes, at, sourceLine - this.sourceLine);
     at = writeVlq(bytes, at, sourceCol - this.sourceCol);

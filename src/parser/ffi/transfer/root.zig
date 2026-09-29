@@ -12,7 +12,7 @@
 //   attached_comments  attached_comment_count * ATTACHED_COMMENT_SIZE bytes
 //   comments           comment_count * COMMENT_SIZE bytes in source order, only with FLAG_COMMENTS
 //   tokens             token_count * TOKEN_SIZE bytes, one `Token` each, copied as is
-//   diagnostics        variable length, written by the encoder and skipped by the decoder
+//   diagnostics        variable length, written by the serializer and skipped by the decoder
 //
 // node packing, per field type
 //
@@ -102,7 +102,6 @@ const PackedAttachedComment = extern struct {
 };
 
 pub const ATTACHED_COMMENT_POSITION_SHIFT: u8 = 1;
-pub const ATTACHED_COMMENT_POSITION_MASK: u8 = 0b11 << ATTACHED_COMMENT_POSITION_SHIFT;
 pub const ATTACHED_COMMENT_SAME_LINE_BIT: u8 = 3;
 
 pub const HEADER_SIZE: u32 = @sizeOf(Header);
@@ -135,7 +134,7 @@ pub const NODE_HEADER_U32S: u8 = @offsetOf(PackedNode, "slots") / 4;
 pub const NODE_SPAN_START_U32: u8 = @offsetOf(PackedNode, "span_start") / 4;
 pub const NODE_SPAN_END_U32: u8 = @offsetOf(PackedNode, "span_end") / 4;
 
-pub const NODE_DATA_SLOTS: u8 = NODE_SPAN_START_U32 - NODE_HEADER_U32S;
+const NODE_DATA_SLOTS: u8 = NODE_SPAN_START_U32 - NODE_HEADER_U32S;
 pub const NODE_FLAG_BITS: u8 = @bitSizeOf(@FieldType(PackedNode, "flags"));
 
 pub const COMMENT_FLAGS_OFFSET: u8 = @offsetOf(PackedComment, "flags");
