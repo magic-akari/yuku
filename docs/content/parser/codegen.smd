@@ -21,7 +21,7 @@ const { program } = parse("const x = 1 + 2;");
 const { code } = generate(program);
 ```
 
-Pure JavaScript, 2.6x faster than `@babel/generator` and 3x with source maps on. See [yuku-codegen on npm](https://www.npmjs.com/package/yuku-codegen) for the full API.
+Pure JavaScript, so it also runs in the browser with [`@yuku-parser/wasm`](/parser/#webassembly). Runs 2.6x faster than `@babel/generator`, or 3x with source maps on. See [yuku-codegen on npm](https://www.npmjs.com/package/yuku-codegen) for the full API.
 
 ## [Zig]($section.id('zig'))
 

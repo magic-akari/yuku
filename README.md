@@ -73,7 +73,7 @@ generate(parse("const enabled = true;").program, { minify: true }).code;
 // "const enabled=!0"
 ```
 
-Runs 2.6x faster than `@babel/generator`, or 3x with source maps on:
+Emits a Source Map V3 in the same pass, and runs 2.6x faster than `@babel/generator`, or 3x with source maps on:
 
 ```js
 const { program } = parse(source);

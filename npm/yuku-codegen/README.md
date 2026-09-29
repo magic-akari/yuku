@@ -36,6 +36,8 @@ interface GenerateResult {
 
 `errors` is empty on a clean run. `map` is non-null only when `sourceMap` is enabled.
 
+Numbers, bigints, and regular expression flags print from their `raw` lexeme when present, so delete `raw` after changing one of those values.
+
 ## Options
 
 Every transformation is an independent flag, so they compose freely:
@@ -53,7 +55,7 @@ const { code, map } = generate(program, {
 | `strip`     | `boolean`                                                        | `false`      | Drop TypeScript-only syntax and emit plain JavaScript. See [TypeScript stripping](#typescript-stripping). |
 | `minify`    | `boolean \| MinifyOptions`                                       | `false`      | `true` for maximum minification, an object for fine-grained control. See [Minification](#minification). |
 | `format`    | `"pretty" \| "compact"`                                          | `"pretty"`   | Whitespace mode. `"compact"` emits only the separators the grammar requires.      |
-| `indent`    | `number`                                                         | `2`          | Spaces per indentation level. Applies in pretty mode only.                        |
+| `indent`    | `number`                                                         | `2`          | Spaces per indentation level, from 0 to 255. Applies in pretty mode only.         |
 | `quotes`    | `"preserve" \| "double" \| "single" \| "shortest"`               | `"preserve"` | Quote style for string literals. See [Quotes](#quotes).                           |
 | `comments`  | `boolean \| "all" \| "some" \| "none" \| "line" \| "block"`      | `"some"`     | Comment passthrough filter. See [Comments](#comments).                            |
 | `sourceMap` | `SourceMapOptions`                                               | `undefined`  | Pass an object to emit a Source Map V3. See [Source maps](#source-maps).          |
@@ -132,7 +134,7 @@ Because comments are attached to nodes, they survive AST transforms: move or rep
 
 ## Source maps
 
-Pass a `SourceMapOptions` object to emit a Source Map V3. Its `source` field is the original source text, which positions map back to. Without it, no map is produced and `map` is `null`. The other fields (`file`, `sourceFileName`, `sourceRoot`, `sourcesContent`) are optional metadata.
+Pass a `SourceMapOptions` object to emit a Source Map V3. Its `source` field is the original source text, which positions map back to. The other fields (`file`, `sourceFileName`, `sourceRoot`, `sourcesContent`) are optional metadata.
 
 ```js
 import { writeFileSync } from "node:fs";
