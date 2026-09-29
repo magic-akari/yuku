@@ -11,7 +11,8 @@
 //!   u32   source map mappings length, then the mappings
 //!   u32   error count, then per error a u32 start, u32 end, u32 message length, message
 //!
-//! Only the status is written for a skipped file. The options mirror `codegen.Options`.
+//! Only the status is written for a skipped file. The options mirror `codegen.Options`, and
+//! `--no-preserve-parens` parses without parenthesized expressions.
 //!
 //!   --strip --minify --compact --source-map --no-preserve-parens --indent=<n>
 //!   --quotes=<preserve|double|single|shortest> --comments=<none|all|some|line|block>
@@ -44,7 +45,7 @@ pub fn main(init: std.process.Init) !void {
     const list = try std.Io.Dir.cwd().readFileAlloc(io, args[1], gpa, .limited(list_bytes_max));
     defer gpa.free(list);
 
-    const out_file = try std.Io.Dir.cwd().createFile(io, args[2], .{});
+    const out_file = try std.Io.Dir.cwd().createFile(io, args[2], .{ .truncate = true });
     defer out_file.close(io);
     var out_buffer: [64 * 1024]u8 = undefined;
     var out_writer = out_file.writer(io, &out_buffer);
@@ -60,7 +61,7 @@ pub fn main(init: std.process.Init) !void {
             .limited(source_bytes_max),
         );
         defer gpa.free(source);
-        try printFile(gpa, out, path, source, plan);
+        try printFile(gpa, out, path, source, &plan);
     }
     try out.flush();
 }
@@ -70,7 +71,7 @@ fn printFile(
     out: *std.Io.Writer,
     path: []const u8,
     source: []const u8,
-    plan: Plan,
+    plan: *const Plan,
 ) !void {
     var tree = try parser.parse(gpa, source, .{
         .lang = ast.Lang.fromPath(path),

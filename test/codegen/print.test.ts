@@ -205,9 +205,9 @@ test("each switch case statement starts on its own line, and compact keeps them 
   );
 });
 
-test("chains deeper than the call stack print as written", () => {
+test("chains past the recursion budget print as written", () => {
   for (const { source, lang } of deepChains()) {
-    expect(gen(source, {}, `input.${lang}`) === source, source.slice(0, 40)).toBe(true);
+    expect(gen(source, {}, `input.${lang}`)).toBe(source);
   }
 });
 

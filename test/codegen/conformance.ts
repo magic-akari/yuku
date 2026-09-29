@@ -12,7 +12,11 @@ import { generate, type GenerateOptions } from "yuku-codegen";
 import { corpusFiles, type CorpusFile } from "../corpus";
 import { deepChains } from "./helpers";
 
-const REFERENCE = "zig-out/bin/codegen-reference";
+const REFERENCE = join(
+  "zig-out",
+  "bin",
+  process.platform === "win32" ? "codegen-reference.exe" : "codegen-reference",
+);
 
 export interface Plan {
   name: string;
@@ -127,25 +131,29 @@ interface Reference {
   errors: { start: number; end: number; message: string }[];
 }
 
-/** Writes `deepChains` into `dir` as files both printers read. */
-export function deepChainFiles(dir: string): CorpusFile[] {
-  return deepChains().map(({ source, lang }, i) => {
-    const relative = `chain-${i}.${lang}`;
-    const path = join(dir, relative);
-    writeFileSync(path, source);
-    return { path, relative, lang, sourceType: sourceTypeFromPath(path) };
+/** A file to print, read from `path` unless `source` is given. */
+export interface Input extends CorpusFile {
+  source?: string;
+}
+
+/** Every corpus file and the deep chains. */
+export function conformanceInputs(): Input[] {
+  const chains = deepChains().map(({ source, lang }, i) => {
+    const path = `chain-${i}.${lang}`;
+    return { path, relative: path, lang, sourceType: sourceTypeFromPath(path), source };
   });
+  return [...corpusFiles(), ...chains];
 }
 
 /** Prints `files` with both printers under `plan`. */
-export function runPlan(plan: Plan, files: CorpusFile[]): PlanResult {
+export function runPlan(plan: Plan, files: Input[]): PlanResult {
   const references = runReference(plan, files);
   const mismatches: Mismatch[] = [];
   let compared = 0;
   for (let i = 0; i < files.length; i++) {
     const file = files[i]!;
     const reference = references[i]!;
-    const source = readFileSync(file.path, "utf8");
+    const source = file.source ?? readFileSync(file.path, "utf8");
     const parseOptions: ParseOptions = {
       lang: file.lang,
       sourceType: file.sourceType,
@@ -206,15 +214,21 @@ export function runPlan(plan: Plan, files: CorpusFile[]): PlanResult {
   return { plan: plan.name, compared, mismatches };
 }
 
-function runReference(plan: Plan, files: CorpusFile[]): Reference[] {
+function runReference(plan: Plan, files: Input[]): Reference[] {
   if (!existsSync(REFERENCE)) {
     throw new Error(`${REFERENCE} is missing, build it with \`zig build codegen-reference\``);
   }
   const dir = mkdtempSync(join(tmpdir(), "codegen-conformance-"));
   try {
+    const paths = files.map((file) => {
+      if (file.source === undefined) return file.path;
+      const path = join(dir, file.path);
+      writeFileSync(path, file.source);
+      return path;
+    });
     const list = join(dir, "list.txt");
     const out = join(dir, "out.bin");
-    writeFileSync(list, files.map((f) => f.path).join("\n") + "\n");
+    writeFileSync(list, paths.join("\n") + "\n");
     const run = spawnSync(REFERENCE, [list, out, ...plan.zig], { stdio: "inherit" });
     if (run.status !== 0) throw new Error(`codegen-reference failed for plan ${plan.name}`);
     return readReference(readFileSync(out), files.length);
@@ -223,36 +237,37 @@ function runReference(plan: Plan, files: CorpusFile[]): Reference[] {
   }
 }
 
-function readReference(buf: Buffer, count: number): Reference[] {
+function readReference(output: Buffer, count: number): Reference[] {
   const references: Reference[] = [];
-  let p = 0;
-  const bytes = (): string => {
-    const len = buf.readUInt32LE(p);
-    p += 4;
-    const s = buf.toString("utf8", p, p + len);
-    p += len;
-    return s;
+  let offset = 0;
+  const readU32 = (): number => {
+    const value = output.readUInt32LE(offset);
+    offset += 4;
+    return value;
+  };
+  const readString = (): string => {
+    const length = readU32();
+    const text = output.toString("utf8", offset, offset + length);
+    offset += length;
+    return text;
   };
   for (let i = 0; i < count; i++) {
-    const status = buf[p++];
+    const status = output[offset++];
     if (status !== 0) {
       references.push({ printed: false, code: "", mappings: "", errors: [] });
       continue;
     }
-    const code = bytes();
-    const mappings = bytes();
-    const errorCount = buf.readUInt32LE(p);
-    p += 4;
+    const code = readString();
+    const mappings = readString();
     const errors = [];
-    for (let k = 0; k < errorCount; k++) {
-      const start = buf.readUInt32LE(p);
-      const end = buf.readUInt32LE(p + 4);
-      p += 8;
-      errors.push({ start, end, message: bytes() });
+    for (let remaining = readU32(); remaining > 0; remaining--) {
+      const start = readU32();
+      const end = readU32();
+      errors.push({ start, end, message: readString() });
     }
     references.push({ printed: true, code, mappings, errors });
   }
-  if (p !== buf.length) throw new Error("codegen-reference output has trailing bytes");
+  if (offset !== output.length) throw new Error("codegen-reference output has trailing bytes");
   return references;
 }
 
@@ -282,16 +297,17 @@ function firstDifference(a: string, b: string): number {
 }
 
 /** A readable excerpt around the first difference of a mismatch. */
-export function describe(m: Mismatch, context = 240): string {
-  if (m.what === "threw" || m.what === "skip") return `${m.path} ${m.what}\n${m.actual}`;
-  const at = firstDifference(m.expected, m.actual);
+export function describeMismatch(mismatch: Mismatch, context = 240): string {
+  const { path, what, expected, actual } = mismatch;
+  if (what === "threw" || what === "skip") return `${path} ${what}\n${actual}`;
+  const at = firstDifference(expected, actual);
   const from = Math.max(0, at - context);
   return [
-    `${m.path} ${m.what} differs at ${at}`,
+    `${path} ${what} differs at ${at}`,
     "--- zig",
-    m.expected.slice(from, at + context),
+    expected.slice(from, at + context),
     "--- js",
-    m.actual.slice(from, at + context),
+    actual.slice(from, at + context),
   ].join("\n");
 }
 
@@ -302,29 +318,29 @@ if (import.meta.main) {
   const show = showAt >= 0 ? Number(args[showAt + 1]) : 3;
   const only = fileAt >= 0 ? args[fileAt + 1] : undefined;
   const values = new Set([fileAt, showAt].filter((at) => at >= 0).map((at) => at + 1));
-  const names = args.filter((a, i) => !a.startsWith("--") && !values.has(i));
-  const plans = names.length > 0 ? PLANS.filter((p) => names.includes(p.name)) : PLANS;
-  const dir = mkdtempSync(join(tmpdir(), "codegen-chains-"));
-  const files = [...corpusFiles(), ...deepChainFiles(dir)].filter(
-    (f) => only === undefined || f.path.includes(only),
+  const names = args.filter((arg, i) => !arg.startsWith("--") && !values.has(i));
+  const plans = names.length > 0 ? PLANS.filter((plan) => names.includes(plan.name)) : PLANS;
+  const files = conformanceInputs().filter(
+    (file) => only === undefined || file.path.includes(only),
   );
   let failed = false;
   for (const plan of plans) {
-    const t0 = performance.now();
+    const start = performance.now();
     const result = runPlan(plan, files);
-    const ms = (performance.now() - t0).toFixed(0);
+    const ms = (performance.now() - start).toFixed(0);
     console.log(
       `${plan.name.padEnd(11)} ${result.compared} compared, ` +
         `${result.mismatches.length} mismatched (${ms} ms)`,
     );
-    const byKind = new Map<string, number>();
-    for (const m of result.mismatches) byKind.set(m.what, (byKind.get(m.what) ?? 0) + 1);
-    if (byKind.size > 0) {
-      console.log("  " + [...byKind].map(([k, v]) => `${k} ${v}`).join(", "));
+    const counts = new Map<string, number>();
+    for (const { what } of result.mismatches) counts.set(what, (counts.get(what) ?? 0) + 1);
+    if (counts.size > 0) {
+      console.log("  " + [...counts].map(([what, count]) => `${what} ${count}`).join(", "));
     }
-    for (const m of result.mismatches.slice(0, show)) console.log(describe(m) + "\n");
+    for (const mismatch of result.mismatches.slice(0, show)) {
+      console.log(describeMismatch(mismatch) + "\n");
+    }
     failed ||= result.mismatches.length > 0;
   }
-  rmSync(dir, { recursive: true, force: true });
   process.exit(failed ? 1 : 0);
 }

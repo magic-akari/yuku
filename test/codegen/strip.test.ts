@@ -31,7 +31,7 @@ test("a statement list that strips to nothing leaves no blank line", () => {
   `);
 });
 
-test("an item strip empties takes its separator with it", () => {
+test("stripping an item or statement leaves no stray separator", () => {
   const source = [
     "function f(this: T, a: number) {}",
     "class C { abstract x: T; declare y: T; z = 1; }",
