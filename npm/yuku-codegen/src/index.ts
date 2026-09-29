@@ -13,7 +13,7 @@ export type Format = "pretty" | "compact";
 export type Quotes = "preserve" | "double" | "single" | "shortest";
 
 /**
- * Comment passthrough filter. `"some"` emits legal headers, JSDoc, and `@__*__` annotations,
+ * Comment passthrough filter. `"some"` emits legal headers, JSDoc, and `@`/`#` annotations,
  * `true` and `false` are sugar for `"all"` and `"none"`.
  */
 export type Comments = boolean | "all" | "some" | "none" | "line" | "block";
@@ -95,16 +95,14 @@ const COMMENTS = ["none", "all", "some", "line", "block"] as const;
 
 /** Renders the AST back to source code. */
 export function generate(program: Program, options: GenerateOptions = {}): GenerateResult {
-  if (program == null || typeof program !== "object" || program.type !== "Program") {
-    throw new TypeError(
-      "Expected a `Program` node from yuku-parser, got " +
-        (program === null ? "null" : typeof program),
-    );
+  if (program?.type !== "Program") {
+    throw new TypeError("Expected a `Program` node, such as `parse(source).program`");
   }
   const printOptions = resolveOptions(options);
   const sourceMap = options.sourceMap;
-  if (sourceMap == null || typeof sourceMap.source !== "string") {
-    return { ...print(program, printOptions, null), map: null };
+  if (sourceMap == null) return { ...print(program, printOptions, null), map: null };
+  if (typeof sourceMap.source !== "string") {
+    throw new TypeError("`sourceMap.source` must be the original source text");
   }
   const mappings = new Mappings(Math.max(sourceMap.source.length >>> 3, 1024));
   const { code, errors } = print(program, printOptions, mappings);
@@ -126,7 +124,7 @@ function resolveOptions(options: GenerateOptions): PrintOptions {
       ? { whitespace: true, syntax: true, quotes: true }
       : options.minify || {};
 
-  const format = minify.whitespace ? "compact" : (options.format ?? "pretty");
+  const format = minify.whitespace === true ? "compact" : (options.format ?? "pretty");
   if (format !== "pretty" && format !== "compact") {
     throw new TypeError('`format` must be "pretty" or "compact"');
   }
@@ -136,7 +134,7 @@ function resolveOptions(options: GenerateOptions): PrintOptions {
     throw new RangeError("`indent` must be an integer from 0 to 255");
   }
 
-  const quotes = minify.quotes ? "shortest" : (options.quotes ?? "preserve");
+  const quotes = minify.quotes === true ? "shortest" : (options.quotes ?? "preserve");
   if (!QUOTES.includes(quotes)) {
     throw new TypeError('`quotes` must be "preserve", "double", "single", or "shortest"');
   }
