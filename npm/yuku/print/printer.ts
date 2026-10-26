@@ -132,6 +132,7 @@ const CTX_TAGGED = 1 << 9;
 const CTX_DEFER_TRAILING = 1 << 10;
 const CTX_NO_DECORATORS = 1 << 11;
 const CTX_POSTFIX_OPERAND = 1 << 12;
+const CTX_NO_CHAIN = 1 << 13;
 
 const TPREC_TRAILING = 1;
 const TPREC_UNION = 2;
@@ -617,7 +618,7 @@ class NodePrinter extends Output implements Printer {
   needsParens(node: Node, type: string, ctx: number): boolean {
     const prec = ctx & CTX_PREC;
     if (this.lead !== LEAD_NONE && this.leadNeedsParens(node, type)) return true;
-    const flags = CTX_NO_CALL | CTX_NO_IN | CTX_NO_INSTANTIATION;
+    const flags = CTX_NO_CALL | CTX_NO_IN | CTX_NO_INSTANTIATION | CTX_NO_CHAIN;
     if ((ctx & flags) !== 0 && this.flagNeedsParens(node, type, ctx)) return true;
     if (prec <= PREC_ASSIGNMENT) return prec === PREC_ASSIGNMENT && type === "SequenceExpression";
     if (prec >= PREC_CALL && type === "ChainExpression") return true;
@@ -656,6 +657,7 @@ class NodePrinter extends Output implements Printer {
       }
     }
     if ((ctx & CTX_NO_INSTANTIATION) !== 0 && type === "TSInstantiationExpression") return true;
+    if ((ctx & CTX_NO_CHAIN) !== 0 && type === "ChainExpression") return true;
     return (
       (ctx & CTX_NO_IN) !== 0 &&
       type === "BinaryExpression" &&
@@ -1086,6 +1088,7 @@ class NodePrinter extends Output implements Printer {
       case "ChainExpression":
         return ctx;
       case "TSNonNullExpression":
+        return PREC_POSTFIX | CTX_NO_INSTANTIATION | CTX_NO_CHAIN;
       case "TSInstantiationExpression":
         return PREC_POSTFIX | CTX_NO_INSTANTIATION;
       case "TSAsExpression":

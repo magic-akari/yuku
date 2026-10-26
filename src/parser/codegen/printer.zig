@@ -114,6 +114,7 @@ const Ctx = struct {
     prec: u8 = Precedence.Lowest,
     no_in: bool = false,
     no_call: bool = false,
+    no_chain: bool = false,
     // the next token would change how TypeScript reads a trailing `f<T>`
     no_instantiation: bool = false,
     no_jsx_tag: bool = false,
@@ -611,7 +612,15 @@ const Printer = struct {
                 },
             },
             .chain_expression => .{ .idx = node.expression, .ctx = ctx },
-            .ts_non_null_expression, .ts_instantiation_expression => .{
+            .ts_non_null_expression => .{
+                .idx = node.expression,
+                .ctx = .{
+                    .prec = Precedence.Postfix,
+                    .no_instantiation = true,
+                    .no_chain = true,
+                },
+            },
+            .ts_instantiation_expression => .{
                 .idx = node.expression,
                 .ctx = .{ .prec = Precedence.Postfix, .no_instantiation = true },
             },
@@ -797,6 +806,7 @@ const Printer = struct {
             else => {},
         };
         if (ctx.no_instantiation and data == .ts_instantiation_expression) return true;
+        if (ctx.no_chain and data == .chain_expression) return true;
         if (ctx.prec >= Precedence.Call and data == .chain_expression) return true;
 
         if (ctx.no_in and data == .binary_expression and
