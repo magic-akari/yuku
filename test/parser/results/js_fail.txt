@@ -1,6 +1,6 @@
 test/parser/suite/js/fail
 =========================
-Passed:       5075/5075 (100.00%)
+Passed:       5093/5093 (100.00%)
 Failed:       0
 
 ✓ test/parser/suite/js/fail/00128c2237478f9e.js
@@ -424,7 +424,7 @@ error: Lexical declaration cannot appear in a single-statement context
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1.1_E1
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -2250,6 +2250,16 @@ error: 'yield' is reserved in a generator context and cannot be used as an ident
  3 | };
    |
 
+✓ test/parser/suite/js/fail/0b5c42ce97c7f9df.js
+error: Unexpected token '%'
+   |
+ 1 | class A { x = %arguments() }
+   |               ^
+ 2 | 
+   |
+   = help: Expected an expression
+
+
 ✓ test/parser/suite/js/fail/0b664302e17ed77f.js
 error: Rest element must be the last element
    |
@@ -2303,7 +2313,7 @@ error: Rest parameter may not have a trailing comma
 error: Numeric separator is only allowed between two digits
    |
  1 | {1_}
-   |    ^
+   |   ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -2530,7 +2540,7 @@ error: Expected '(' after import, but found '.'
 error: Numeric separator is only allowed between two digits
    |
  1 | 0xa_1_, 0
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -2773,7 +2783,7 @@ error: Unexpected token ';' in binding pattern
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_
-   |   ^
+   |  ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -3415,7 +3425,7 @@ error: Keywords cannot contain escape characters
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1_.1_1;
-   |     ^
+   |    ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -3786,7 +3796,7 @@ error: Invalid element in assignment pattern
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1_.1_1, 0
-   |     ^
+   |    ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -3961,7 +3971,7 @@ error: Unexpected token '>'
 error: Numeric separator is only allowed between two digits
    |
  1 | 0b0_n;
-   |     ^
+   |    ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -5000,7 +5010,7 @@ error: Expected '{' to start class body, but found '+'
 error: Numeric separator is only allowed between two digits
    |
  1 | {0b01_1_}
-   |         ^
+   |        ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -6649,7 +6659,7 @@ error: Unexpected token '...'
 error: Numeric separator is only allowed between two digits
    |
  1 | (1_1_.1_1)
-   |      ^
+   |     ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -6866,7 +6876,7 @@ error: Expected a semicolon or an implicit semicolon after a statement, but foun
 error: Numeric separator is only allowed between two digits
    |
  1 | (1_1.1_E1)
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -7089,6 +7099,15 @@ error: Rest element is not allowed in parenthesized expression
    |
    = help: Spread in parentheses is only valid for arrow function parameters.
 
+
+✓ test/parser/suite/js/fail/24e38286ce971a6c.js
+error: Expected ';' after for-loop init, but found 'if'
+   |
+ 1 | for (let
+ 2 | if;;);
+   | ^^
+ 3 | 
+   |
 
 ✓ test/parser/suite/js/fail/24e95a12b43a1f21.js
 error: Invalid element in assignment pattern
@@ -7655,7 +7674,7 @@ error: Shorthand property must be an identifier
 error: Numeric separator is only allowed between two digits
    |
  1 | [1_1.1_e1]
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -8844,9 +8863,8 @@ error: Expected ')' to close parameter list, but found '='
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1_
-   |     ^
+   |    ^
  2 | 
-   | ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -9521,7 +9539,7 @@ error: Expected 'from' after export *, but found '{'
 error: Invalid character at start of identifier
    |
  1 | var _𖫵 = 11;
-   |      ^
+   |      ^^
    |
    = help: Try starting the identifier here with a letter (a-z, A-Z), underscore (_), or dollar sign ($)
 
@@ -10640,7 +10658,7 @@ error: Unexpected token '>'
 error: Numeric separator is only allowed between two digits
    |
  1 | 10._1
-   |   ^
+   |    ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -11744,6 +11762,17 @@ error: Expected ']' after computed property key, but found ','
    |     ^
    |
 
+✓ test/parser/suite/js/fail/3aa2169ab3367ddd.js
+error: Expected a semicolon or an implicit semicolon after a statement, but found '0'
+   |
+ 2 |   let
+ 3 |   yield 0;
+   |         ^
+ 4 | }
+   |
+   = help: Try inserting a semicolon here
+
+
 ✓ test/parser/suite/js/fail/3abcd276a5e4d2d2.js
 error: 'else' is reserved and cannot be used as an identifier
    |
@@ -12703,7 +12732,7 @@ error: 'for await' is only valid in async functions or modules
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1._1_1
-   |    ^
+   |     ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -12904,9 +12933,8 @@ error: Classes may not have a static property named 'prototype'
 error: Numeric separator is only allowed between two digits
    |
  1 | 0xa_1_
-   |       ^
+   |      ^
  2 | 
-   | ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -12993,6 +13021,17 @@ error: Unexpected token '-' in binding pattern
    |               ^
    |
    = help: Expected an identifier, array pattern ([a, b]), or object pattern ({a, b}).
+
+
+✓ test/parser/suite/js/fail/421bf6bacf97c2c7.js
+error: Keywords cannot contain escape characters
+   |
+ 1 | let
+ 2 | i\u0066 (x) {}
+   | ^^^^^^^
+ 3 | 
+   |
+   = help: Remove the escape characters
 
 
 ✓ test/parser/suite/js/fail/4241d31edf1acf78.js
@@ -13787,7 +13826,7 @@ error: 'yield' is reserved in a generator context and cannot be used as a bindin
 error: Numeric separator is only allowed between two digits
    |
  1 | (0b01_1_)
-   |         ^
+   |        ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -14427,7 +14466,7 @@ error: Unexpected token '>'
 error: Numeric separator is only allowed between two digits
    |
  1 | 10._e1
-   |   ^
+   |    ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -14701,6 +14740,16 @@ error: 'debugger' is reserved and cannot be used as a binding identifier
  1 | var debugger = 1;
    |     ^^^^^^^^
    |
+
+✓ test/parser/suite/js/fail/4c5f1490d57d2a25.module.js
+error: Expected 'from' after import clause, but found '{'
+   |
+ 1 | import defer {} from "x" with { type: "json" };
+   |              ^
+ 2 | 
+   |
+   = help: Import statements require 'from' followed by a module specifier: import x from 'module'
+
 
 ✓ test/parser/suite/js/fail/4c60d3655a7f1ccc.js
 error: Numeric literal cannot contain consecutive separators
@@ -14977,7 +15026,7 @@ error: Rest element must be the last element
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_n;
-   |   ^
+   |  ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -15837,6 +15886,16 @@ error: Unexpected token '@' in binding pattern
    = help: Expected an identifier, array pattern ([a, b]), or object pattern ({a, b}).
 
 
+✓ test/parser/suite/js/fail/51bc9d3e9a0b0164.module.js
+error: Expected 'from' after import clause, but found '{'
+   |
+ 1 | import source {} from "x";
+   |               ^
+ 2 | 
+   |
+   = help: Import statements require 'from' followed by a module specifier: import x from 'module'
+
+
 ✓ test/parser/suite/js/fail/51bf7cebcb8b3537.js
 error: Unexpected token '>'
    |
@@ -16100,7 +16159,7 @@ error: 'catch' is reserved and cannot be used as an identifier
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1._1_1;
-   |    ^
+   |     ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -16266,7 +16325,7 @@ error: Invalid Unicode escape sequence
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1._1_1, 0
-   |    ^
+   |     ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -16717,7 +16776,7 @@ error: Unexpected token ')'
 error: Numeric separator is only allowed between two digits
    |
  1 | 0b01_1_, 0
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -16853,7 +16912,7 @@ error: A rest element cannot have an initializer
 error: Numeric separator is only allowed between two digits
    |
  1 | [0b01_1_]
-   |         ^
+   |        ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -17865,6 +17924,15 @@ error: Unexpected token '%'
    = help: Expected an expression
 
 
+✓ test/parser/suite/js/fail/5d2b4e3930ea5cd4.module.js
+error: 'if' is reserved and cannot be used as a binding identifier
+   |
+ 1 | export let
+ 2 | if (x) {}
+   | ^^
+ 3 | 
+   |
+
 ✓ test/parser/suite/js/fail/5d338d42cd222c0a.js
 error: Expected a semicolon or an implicit semicolon after a statement, but found '1'
    |
@@ -18463,7 +18531,7 @@ error: Unexpected token '%'
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_, 0
-   |   ^
+   |  ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -18762,9 +18830,8 @@ error: Invalid Unicode escape sequence
 error: Numeric separator is only allowed between two digits
    |
  1 | 0x1_1_
-   |       ^
+   |      ^
  2 | 
-   | ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -20115,7 +20182,7 @@ error: 'export' is reserved and cannot be used as an identifier
 error: Numeric separator is only allowed between two digits
    |
  1 | 10.0_e1
-   |      ^
+   |     ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -20458,7 +20525,7 @@ error: Rest parameter may not have a trailing comma
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1_, 0
-   |     ^
+   |    ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -20486,7 +20553,7 @@ error: Expected '{' to start class body, but found 'B'
 error: Numeric separator is only allowed between two digits
    |
  1 | (1_)
-   |    ^
+   |   ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -20710,6 +20777,16 @@ error: Object rest argument cannot be a destructuring pattern
  2 | 
    |
    = help: Collect the remaining properties into an identifier and destructure it separately.
+
+
+✓ test/parser/suite/js/fail/6c0f7b93146c62ab.js
+error: Expected a semicolon or an implicit semicolon after a statement, but found 'if'
+   |
+ 1 | let if (x) {}
+   |     ^^
+ 2 | 
+   |
+   = help: Try inserting a semicolon here
 
 
 ✓ test/parser/suite/js/fail/6c14037010c9bdf2.js
@@ -21314,7 +21391,7 @@ error: Expected a semicolon or an implicit semicolon after a statement, but foun
 error: Numeric separator is only allowed between two digits
    |
  1 | (1_1._1_1)
-   |     ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -21689,7 +21766,7 @@ error: 'yield' is reserved in a generator context and cannot be used as an ident
 error: Numeric separator is only allowed between two digits
    |
  1 | {0o1_1_}
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -22424,6 +22501,15 @@ error: Keywords cannot contain escape characters
    = help: Remove the escape characters
 
 
+✓ test/parser/suite/js/fail/756177bb03111d36.module.js
+error: 'await' is reserved in an async/module context and cannot be used as a binding identifier
+   |
+ 2 |   let
+ 3 |   await 0;
+   |   ^^^^^
+ 4 | }
+   |
+
 ✓ test/parser/suite/js/fail/7562c2148b3f455c.js
 error: Unexpected token '>'
    |
@@ -22521,6 +22607,15 @@ error: Invalid element in assignment pattern
    |
    = help: Expected an identifier, array pattern, object pattern, or assignment pattern.
 
+
+✓ test/parser/suite/js/fail/75d2b4e3930ea5cd.js
+error: 'if' is reserved and cannot be used as a binding identifier
+   |
+ 1 | export let
+ 2 | if (x) {}
+   | ^^
+ 3 | 
+   |
 
 ✓ test/parser/suite/js/fail/75d6cacfff1b2f85.js
 error: Parenthesized expression in assignment pattern must be a simple assignment target
@@ -23389,7 +23484,7 @@ error: Method cannot appear in destructuring pattern
 error: Numeric separator is only allowed between two digits
    |
  1 | 10._
-   |   ^
+   |    ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -23901,6 +23996,15 @@ error: Classes can't have a private field named '#constructor'
    = help: Use a different name for this private member.
 
 
+✓ test/parser/suite/js/fail/7c9859cf8dc6b709.js
+error: 'yield' is reserved in a generator context and cannot be used as a binding identifier
+   |
+ 2 |   let
+ 3 |   yield 0;
+   |   ^^^^^
+ 4 | }
+   |
+
 ✓ test/parser/suite/js/fail/7c9d93b882916ded.module.js
 error: Invalid operand for increment/decrement operator
    |
@@ -24325,7 +24429,7 @@ error: Expected '(' after import, but found ')'
 error: Numeric separator is only allowed between two digits
    |
  1 | {0x1_1_}
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -24445,6 +24549,16 @@ error: Unexpected token '>'
    |
  1 | value |> 2^^;
    |        ^
+ 2 | 
+   |
+   = help: Expected an expression
+
+
+✓ test/parser/suite/js/fail/7f99a8df6a025a2b.js
+error: Unexpected token '%'
+   |
+ 1 | async function f() { %await() }
+   |                      ^
  2 | 
    |
    = help: Expected an expression
@@ -25116,7 +25230,7 @@ error: Keywords cannot contain escape characters
 error: Numeric separator is only allowed between two digits
    |
  1 | 0o01_8
-   |      ^
+   |     ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -25891,9 +26005,8 @@ error: 'const' declarations must be initialized
 error: Numeric separator is only allowed between two digits
    |
  1 | 0o1_1_
-   |       ^
+   |      ^
  2 | 
-   | ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -26224,7 +26337,7 @@ error: Expected 'while' after do statement body, but found 'var'
 error: Numeric separator is only allowed between two digits
    |
  1 | 10_
-   |    ^
+   |   ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -26418,7 +26531,7 @@ error: Expected ')' to close parameter list, but found '='
 error: Numeric separator is only allowed between two digits
    |
  1 | [1_]
-   |    ^
+   |   ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -26957,7 +27070,7 @@ error: A rest element cannot have an initializer
 error: Numeric separator is only allowed between two digits
    |
  1 | (0xa_1_)
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -28480,6 +28593,16 @@ error: Unexpected token '>'
    = help: Expected an expression
 
 
+✓ test/parser/suite/js/fail/9489aef32da2cb3e.module.js
+error: Expected 'from' after import clause, but found '{'
+   |
+ 1 | import defer {} from "x";
+   |              ^
+ 2 | 
+   |
+   = help: Import statements require 'from' followed by a module specifier: import x from 'module'
+
+
 ✓ test/parser/suite/js/fail/9491e6494b03b841.js
 error: Invalid character in identifier
    |
@@ -28568,7 +28691,7 @@ error: Expected 'while' after do statement body, but found ';'
 error: Numeric separator is only allowed between two digits
    |
  1 | .0_e1
-   |    ^
+   |   ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -28655,7 +28778,7 @@ error: The only valid meta properties for 'import' are 'import.meta', 'import.so
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1.1_E1, 0
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -28676,7 +28799,7 @@ error: Rest element must be the last element
 error: Invalid character at start of identifier
    |
  1 | var 🀒
-   |     ^
+   |     ^^
  2 | 
    |
    = help: Try starting the identifier here with a letter (a-z, A-Z), underscore (_), or dollar sign ($)
@@ -28864,7 +28987,7 @@ error: Unexpected token '(' in binding pattern
 error: Numeric separator is only allowed between two digits
    |
  1 | 0b0_
-   |     ^
+   |    ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -29443,7 +29566,7 @@ error: Parenthesized expression in assignment pattern must be a simple assignmen
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1.1_e1
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -29491,7 +29614,7 @@ error: Unexpected token ')'
 error: Numeric separator is only allowed between two digits
    |
  1 | {0xa_1_}
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -29868,7 +29991,7 @@ error: Unexpected token '>'
 error: Numeric separator is only allowed between two digits
    |
  1 | 0xa_1_;
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -29971,7 +30094,7 @@ error: Lexical declaration cannot appear in a single-statement context
 error: Numeric separator is only allowed between two digits
    |
  1 | {1_1.1_E1}
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -30288,7 +30411,7 @@ error: Unexpected token '>'
 error: Numeric separator is only allowed between two digits
    |
  1 | 0x0_
-   |     ^
+   |    ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -30542,7 +30665,7 @@ error: Unexpected token ')'
 error: Numeric separator is only allowed between two digits
    |
  1 | [1_1._1_1]
-   |     ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -30722,7 +30845,7 @@ error: Member expression is not allowed in binding pattern
 error: Numeric separator is only allowed between two digits
    |
  1 | 10_n;
-   |    ^
+   |   ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -31457,7 +31580,7 @@ error: 'import' is reserved and cannot be used as an identifier
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_;
-   |   ^
+   |  ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -31693,7 +31816,7 @@ error: 'extends' is reserved and cannot be used as an identifier
 error: Numeric separator is only allowed between two digits
    |
  1 | 0o1_1_, 0
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -32735,7 +32858,7 @@ error: Numeric separator is only allowed between two digits
 error: Numeric separator is only allowed between two digits
    |
  1 | 0x1_1_;
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -32940,6 +33063,15 @@ error: 'import' is reserved and cannot be used as an identifier
 43 |   new import.source('<module source>').prop;
    |       ^^^^^^
 44 | }
+   |
+
+✓ test/parser/suite/js/fail/ac5bb3ff479867ff.module.js
+error: 'await' is reserved in an async/module context and cannot be used as a binding identifier
+   |
+ 3 | let
+ 4 | await
+   | ^^^^^
+ 5 | let
    |
 
 ✓ test/parser/suite/js/fail/ac63306924ebd092.js
@@ -33299,7 +33431,7 @@ error: Class declarations are not allowed in single-statement contexts
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1.1_e1, 0
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -34025,7 +34157,7 @@ error: Unexpected token '>'
 error: Numeric separator is only allowed between two digits
    |
  1 | [0xa_1_]
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -34719,7 +34851,7 @@ error: Expected declaration after 'export', but found 'A'
 error: Numeric separator is only allowed between two digits
    |
  1 | 0o0_
-   |     ^
+   |    ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -34823,7 +34955,7 @@ error: Parenthesized expression in assignment pattern must be a simple assignmen
 error: Numeric separator is only allowed between two digits
    |
  1 | 0b01_1_;
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -35004,7 +35136,7 @@ error: 'catch' is reserved and cannot be used as a binding identifier
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1_.1_1
-   |     ^
+   |    ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -35466,9 +35598,8 @@ error: Expected '{' to start block statement, but found '('
 error: Numeric separator is only allowed between two digits
    |
  1 | 0b01_1_
-   |        ^
+   |       ^
  2 | 
-   | ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -35689,7 +35820,7 @@ error: 'break' is reserved and cannot be used as a binding identifier
 error: Numeric separator is only allowed between two digits
    |
  1 | (0x1_1_)
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -35725,7 +35856,7 @@ error: Identifier cannot immediately follow a numeric literal
 error: Numeric separator is only allowed between two digits
    |
  1 | [1_1_.1_1]
-   |      ^
+   |     ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -35905,7 +36036,7 @@ error: Classes may not have a static property named 'prototype'
 error: Numeric separator is only allowed between two digits
    |
  1 | [0x1_1_]
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -36278,7 +36409,7 @@ error: Unexpected token ']'
 error: Numeric separator is only allowed between two digits
    |
  1 | 0o1_1_;
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -36787,7 +36918,7 @@ error: Expected a semicolon or an implicit semicolon after a statement, but foun
 error: Numeric separator is only allowed between two digits
    |
  1 | 0x0_n;
-   |     ^
+   |    ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -36844,7 +36975,7 @@ error: Expected identifier or string literal, but found '%'
 error: Invalid character at start of identifier
    |
  1 | var 𫠞_ = 12;
-   |     ^
+   |     ^^
    |
    = help: Try starting the identifier here with a letter (a-z, A-Z), underscore (_), or dollar sign ($)
 
@@ -37515,7 +37646,7 @@ error: Unexpected token '>'
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1_;
-   |     ^
+   |    ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -38672,6 +38803,15 @@ error: A rest element cannot have an initializer
    = help: Remove the '= ...' from the rest element.
 
 
+✓ test/parser/suite/js/fail/cb5fe9e57bf8b827.js
+error: 'enum' is reserved and cannot be used as an identifier
+   |
+ 1 | let
+ 2 | enum;
+   | ^^^^
+ 3 | 
+   |
+
 ✓ test/parser/suite/js/fail/cb64f7e646252173.js
 error: Parenthesized expression in assignment pattern must be a simple assignment target
    |
@@ -39221,6 +39361,15 @@ error: Invalid element in assignment pattern
    |
    = help: Expected an identifier, array pattern, object pattern, or assignment pattern.
 
+
+✓ test/parser/suite/js/fail/ce827fc4d7c64193.module.js
+error: 'await' is reserved in an async/module context and cannot be used as a binding identifier
+   |
+ 1 | let
+ 2 | await 0;
+   | ^^^^^
+ 3 | 
+   |
 
 ✓ test/parser/suite/js/fail/ce880d92129b286e.js
 error: 'default' is reserved and cannot be used as a binding identifier
@@ -39829,7 +39978,7 @@ error: Unexpected token '...'
 error: Numeric separator is only allowed between two digits
    |
  1 | {1_1_}
-   |      ^
+   |     ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -40460,7 +40609,7 @@ error: Invalid element in assignment pattern
 error: Numeric separator is only allowed between two digits
    |
  1 | (1_1_)
-   |      ^
+   |     ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -40919,7 +41068,7 @@ error: Unexpected token ':'
 error: Numeric separator is only allowed between two digits
    |
  1 | 0x1_1_, 0
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -41106,7 +41255,7 @@ error: A rest element cannot have an initializer
 error: Numeric separator is only allowed between two digits
    |
  1 | (0o1_1_)
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -41668,7 +41817,7 @@ error: Rest element must be the last element
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1.1_E1;
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -42706,7 +42855,7 @@ error: Bad escape sequence in untagged template literal
 error: Numeric separator is only allowed between two digits
    |
  1 | [1_1_]
-   |      ^
+   |     ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -43004,6 +43153,16 @@ error: Numeric separator is only allowed between two digits
    = help: Try placing the separator between two digits, or removing it
 
 
+✓ test/parser/suite/js/fail/e31f8850d2736f6b.js
+error: Unexpected token '%'
+   |
+ 1 | function* g() { %yield() }
+   |                 ^
+ 2 | 
+   |
+   = help: Expected an expression
+
+
 ✓ test/parser/suite/js/fail/e323989e60fbcd4a.js
 error: Keywords cannot contain escape characters
    |
@@ -43271,7 +43430,7 @@ error: Parenthesized expression in assignment pattern must be a simple assignmen
 error: Numeric separator is only allowed between two digits
    |
  1 | (1_1.1_e1)
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -43422,7 +43581,7 @@ error: Numeric literal cannot contain consecutive separators
 error: Numeric separator is only allowed between two digits
    |
  1 | {1_1._1_1}
-   |     ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -43583,7 +43742,7 @@ error: Rest element is not allowed in parenthesized expression
 error: Numeric separator is only allowed between two digits
    |
  1 | 0o0_n;
-   |     ^
+   |    ^
    |
    = help: Try placing the separator between two digits, or removing it
 
@@ -44879,7 +45038,7 @@ error: Rest element must be the last element
 error: Numeric separator is only allowed between two digits
    |
  1 | {1_1.1_e1}
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -46140,7 +46299,7 @@ error: Expected identifier or string literal, but found '%'
 error: Numeric separator is only allowed between two digits
    |
  1 | [0o1_1_]
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -46373,6 +46532,16 @@ error: Rest element must be the last element
  4 | callCount = callCount + 1;
    |
    = help: No elements can follow the rest element in a destructuring pattern.
+
+
+✓ test/parser/suite/js/fail/f4a9fc5288327d9d.module.js
+error: Expected 'from' after import clause, but found '{'
+   |
+ 1 | import source {} from "x" with { type: "json" };
+   |               ^
+ 2 | 
+   |
+   = help: Import statements require 'from' followed by a module specifier: import x from 'module'
 
 
 ✓ test/parser/suite/js/fail/f4ab6008465f4bad.js
@@ -47429,7 +47598,7 @@ error: Parenthesized expression in assignment pattern must be a simple assignmen
 error: Numeric separator is only allowed between two digits
    |
  1 | 1_1.1_e1;
-   |       ^
+   |      ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -48371,7 +48540,7 @@ error: Rest element must be the last element
 error: Numeric separator is only allowed between two digits
    |
  1 | {1_1_.1_1}
-   |      ^
+   |     ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it
@@ -48468,7 +48637,7 @@ error: Expected a semicolon or an implicit semicolon after a statement, but foun
 error: Numeric separator is only allowed between two digits
    |
  1 | [1_1.1_E1]
-   |        ^
+   |       ^
  2 | 
    |
    = help: Try placing the separator between two digits, or removing it

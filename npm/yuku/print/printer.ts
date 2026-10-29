@@ -1,4 +1,4 @@
-import { isIdentifierName } from "../ast/utils";
+import { decodeJSXEntities, isIdentifierName } from "../ast/utils";
 import type * as T from "../types";
 
 import type { Comments, Quotes } from "./index";
@@ -151,6 +151,9 @@ const STRING_ESCAPE_SCAN = [
   /[\0\b\t\n\v\f\r\\'<>\ud800-\udfff]/,
 ];
 const TEMPLATE_RAW_SCAN = [/\r/, /[\r<>]/];
+const JSX_TEXT_SYNTAX = /[&<>{}]/g;
+const JSX_STRING_SYNTAX = /["&]/g;
+const LEGACY_OCTAL = /^0[0-7]+$/;
 
 const TYPE_CONTEXT = new Set([
   "TSTypeAnnotation",
@@ -221,6 +224,8 @@ const FIXED_STRING = table({
   TSIntrinsicKeyword: "intrinsic",
   TSJSDocUnknownType: "?",
 });
+
+type DecoratorLayout = "ownLine" | "sameLine";
 
 interface Link {
   node: Node;
@@ -577,9 +582,7 @@ class NodePrinter extends Output implements Printer {
         const value: unknown = (node as T.Literal).value;
         // minify's `!0` ranks as unary
         if (this.minify && typeof value === "boolean") return PREC_UNARY;
-        const raw: unknown = (node as T.Literal).raw;
-        // a negative number without a raw lexeme prints as a negation
-        if (typeof raw !== "string" && isNegativeNumber(value)) return PREC_UNARY;
+        if (isNegativeNumber(value)) return PREC_UNARY;
         return PREC_GROUPING;
       }
       case "BinaryExpression":
@@ -838,7 +841,7 @@ class NodePrinter extends Output implements Printer {
       case "TSAbstractMethodDefinition":
         return this.emitMethodDefinition(node);
       case "JSXText":
-        return this.writeLiteral(node.raw || node.value);
+        return this.writeLiteral(jsxTextSource(node));
       case "WhileStatement":
         return this.printHeaded("while (", "while(", node.test, node.body);
       case "SwitchStatement":
@@ -1359,8 +1362,8 @@ class NodePrinter extends Output implements Printer {
     if (e.type === "Literal" && typeof e.value === "string") {
       // an escaped `"use strict"` is not a directive, so the raw lexeme must survive
       const raw = e.raw;
-      const text = typeof raw === "string" && raw.length >= 2 ? raw : quoteVerbatim(d.directive);
-      this.writeNodeText(e, text);
+      const spelled = typeof raw === "string" && quotes(raw, d.directive);
+      this.writeNodeText(e, spelled ? raw : quoteVerbatim(d.directive));
     } else {
       this.emit(e);
     }
@@ -1863,7 +1866,8 @@ class NodePrinter extends Output implements Printer {
   }
 
   emitNumericLiteral(lit: T.NumericLiteral): void {
-    if (typeof lit.raw === "string") return this.writeNumericRaw(lit.raw);
+    const raw = lit.raw;
+    if (typeof raw === "string" && spellsNumber(raw, lit.value)) return this.writeNumericRaw(raw);
     if (isNegativeNumber(lit.value)) this.write("-");
     this.writeNumericRaw(String(Math.abs(lit.value)));
   }
@@ -1875,23 +1879,20 @@ class NodePrinter extends Output implements Printer {
   }
 
   emitBigIntLiteral(lit: T.BigIntLiteral): void {
-    const raw =
-      typeof lit.raw === "string" && lit.raw.endsWith("n") ? lit.raw.slice(0, -1) : lit.bigint;
-    this.write(raw);
-    this.write("n");
+    const raw = lit.raw;
+    this.write(typeof raw === "string" && spellsBigInt(raw, lit.bigint) ? raw : lit.bigint + "n");
   }
 
   emitRegExpLiteral(lit: T.RegExpLiteral): void {
-    const pattern = lit.regex.pattern;
+    const { pattern, flags } = lit.regex;
     const raw = typeof lit.raw === "string" ? lit.raw : "";
-    const slash = raw.lastIndexOf("/");
     // the parser sorts `regex.flags`, the raw lexeme keeps their source order
-    const flags = slash > 0 ? raw.slice(slash + 1) : lit.regex.flags;
+    const rawFlags = raw.slice(raw.lastIndexOf("/") + 1);
     this.write("/");
     // an empty pattern would open a line comment
     this.writeLiteral(pattern.length > 0 ? pattern : "(?:)");
     this.writeLiteral("/");
-    this.writeLiteral(flags);
+    this.writeLiteral(rawFlags === flags || sortedFlags(rawFlags) === flags ? rawFlags : flags);
   }
 
   printTemplate(
@@ -1958,7 +1959,7 @@ class NodePrinter extends Output implements Printer {
 
   emitIdentifier(id: T.Identifier): void {
     const definite = this.takeDefinite();
-    if (!this.strip && id.decorators != null) this.printDecorators(id.decorators);
+    if (!this.strip && id.decorators != null) this.printDecorators(id.decorators, "sameLine");
     this.writeName(id.name);
     if (id.optional === true) this.emitInsideCommentsInline(id);
     this.printBindingSuffix(id.optional === true, definite, id.typeAnnotation);
@@ -1982,7 +1983,7 @@ class NodePrinter extends Output implements Printer {
   }
 
   emitAssignmentPattern(p: T.AssignmentPattern): void {
-    if (!this.strip && p.decorators != null) this.printDecorators(p.decorators);
+    if (!this.strip && p.decorators != null) this.printDecorators(p.decorators, "sameLine");
     this.emit(p.left);
     this.printBindingSuffix(p.optional === true, false, p.typeAnnotation);
     this.printEq();
@@ -1990,7 +1991,7 @@ class NodePrinter extends Output implements Printer {
   }
 
   emitRestElement(r: T.RestElement): void {
-    if (!this.strip && r.decorators != null) this.printDecorators(r.decorators);
+    if (!this.strip && r.decorators != null) this.printDecorators(r.decorators, "sameLine");
     this.write("...");
     this.emit(r.argument);
     this.printBindingSuffix(r.optional === true, false, r.typeAnnotation);
@@ -1998,7 +1999,7 @@ class NodePrinter extends Output implements Printer {
 
   emitArrayPattern(p: T.ArrayPattern): void {
     const definite = this.takeDefinite();
-    if (!this.strip && p.decorators != null) this.printDecorators(p.decorators);
+    if (!this.strip && p.decorators != null) this.printDecorators(p.decorators, "sameLine");
     this.write("[");
     this.emitInsideCommentsInline(p);
     const elements = p.elements;
@@ -2010,7 +2011,7 @@ class NodePrinter extends Output implements Printer {
 
   emitObjectPattern(p: T.ObjectPattern): void {
     const definite = this.takeDefinite();
-    if (!this.strip && p.decorators != null) this.printDecorators(p.decorators);
+    if (!this.strip && p.decorators != null) this.printDecorators(p.decorators, "sameLine");
     this.write("{");
     this.emitInsideCommentsInline(p);
     const hasAny = p.properties.length > 0;
@@ -2157,7 +2158,7 @@ class NodePrinter extends Output implements Printer {
 
   emitClass(c: T.Class, ctx: number): void {
     if (this.strip && c.declare === true) return;
-    if ((ctx & CTX_NO_DECORATORS) === 0) this.printDecorators(c.decorators);
+    if ((ctx & CTX_NO_DECORATORS) === 0) this.printDecorators(c.decorators, "ownLine");
     if (!this.strip) {
       if (c.declare === true) this.writeKeyword("declare");
       if (c.abstract === true) this.writeKeyword("abstract");
@@ -2210,7 +2211,7 @@ class NodePrinter extends Output implements Printer {
     const fn = m.value as T.Function;
     const isAbstract = m.type === "TSAbstractMethodDefinition";
     if (this.strip && (isAbstract || fn.body == null)) return;
-    this.printDecorators(m.decorators);
+    this.printDecorators(m.decorators, "ownLine");
     this.hoistKeyComments(m.key);
     if (!this.strip && m.accessibility != null) this.writeKeyword(m.accessibility);
     if (m.static) this.writeKeyword("static");
@@ -2236,7 +2237,7 @@ class NodePrinter extends Output implements Printer {
       p.type === "TSAbstractPropertyDefinition" || p.type === "TSAbstractAccessorProperty";
     const isAccessor = p.type === "AccessorProperty" || p.type === "TSAbstractAccessorProperty";
     if (this.strip && (p.declare === true || isAbstract)) return;
-    this.printDecorators(p.decorators);
+    this.printDecorators(p.decorators, "ownLine");
     this.hoistKeyComments(p.key);
     if (!this.strip) {
       if (p.declare === true) this.writeKeyword("declare");
@@ -2272,14 +2273,14 @@ class NodePrinter extends Output implements Printer {
     this.emitExpr(d.expression, simple ? PREC_LOWEST : PREC_GROUPING);
   }
 
-  printDecorators(decs: readonly Node[] | null | undefined): void {
+  printDecorators(decs: readonly Node[] | null | undefined, layout: DecoratorLayout): void {
     if (decs == null || decs.length === 0) return;
     const carry = this.mapStart;
     for (let i = 0; i < decs.length; i++) {
       this.emit(decs[i]);
       // `@a.b class` would fuse to `@a.bclass` without a separator
-      if (this.pretty) this.newline();
-      else if (i + 1 === decs.length) this.write(" ");
+      if (this.pretty && layout === "ownLine") this.newline();
+      else if (this.pretty || i + 1 === decs.length) this.write(" ");
     }
     this.mapStart = carry;
   }
@@ -2353,7 +2354,7 @@ class NodePrinter extends Output implements Printer {
       }
     }
     const hoisted = decoratorsBeforeExport(d.declaration);
-    this.printDecorators(hoisted);
+    this.printDecorators(hoisted, "ownLine");
     this.write("export");
     if (d.declaration != null) {
       this.write(" ");
@@ -2382,7 +2383,7 @@ class NodePrinter extends Output implements Printer {
         return this.emitNothing(d.declaration);
       }
       const hoisted = decoratorsBeforeExport(d.declaration);
-      this.printDecorators(hoisted);
+      this.printDecorators(hoisted, "ownLine");
       this.writeKeyword("export default");
       return this.emitExpr(d.declaration, hoisted !== null ? CTX_NO_DECORATORS : 0);
     }
@@ -2440,16 +2441,7 @@ class NodePrinter extends Output implements Printer {
     if (value == null) return;
     this.write("=");
     if (value.type === "Literal" && typeof value.value === "string") {
-      // jsx attribute strings have no escapes, the raw lexeme is the value
-      if (typeof value.raw === "string" && value.raw.length >= 2) {
-        this.writeNodeText(value, value.raw);
-      } else if (value.value.includes('"') && value.value.includes("'")) {
-        this.write("{");
-        this.emit(value);
-        this.write("}");
-      } else {
-        this.writeNodeText(value, quoteVerbatim(value.value));
-      }
+      this.writeNodeText(value, jsxStringSource(value));
     } else {
       this.emit(value);
     }
@@ -2671,7 +2663,7 @@ class NodePrinter extends Output implements Printer {
         this.emit(node.expression);
         return this.write(")");
       case "TSParameterProperty":
-        this.printDecorators(node.decorators);
+        this.printDecorators(node.decorators, "sameLine");
         if (node.accessibility != null) this.writeKeyword(node.accessibility);
         if (node.override) this.writeKeyword("override");
         if (node.readonly) this.writeKeyword("readonly");
@@ -2891,6 +2883,49 @@ function isNegativeNumber(value: unknown): boolean {
 
 function quoteVerbatim(text: string): string {
   return text.includes('"') ? "'" + text + "'" : '"' + text + '"';
+}
+
+function spellsNumber(raw: string, value: number): boolean {
+  if (String(value) === raw) return !Object.is(value, -0);
+  const digits = raw.indexOf("_") === -1 ? raw : raw.replace(/_/g, "");
+  if (digits.charCodeAt(0) === CHAR_0 && isAsciiDigit(digits.charCodeAt(1))) {
+    if (LEGACY_OCTAL.test(digits)) return Object.is(parseInt(digits, 8), value);
+  }
+  return Object.is(+digits, value);
+}
+
+function spellsBigInt(raw: string, bigint: string): boolean {
+  if (!raw.endsWith("n")) return false;
+  return BigInt(raw.slice(0, -1).replace(/_/g, "")).toString() === bigint;
+}
+
+function sortedFlags(flags: string): string {
+  return flags.split("").sort().join("");
+}
+
+function jsxTextSource(text: T.JSXText): string {
+  const raw = text.raw;
+  if (typeof raw === "string" && decodeJSXEntities(raw) === text.value) return raw;
+  return text.value.replace(JSX_TEXT_SYNTAX, charReference);
+}
+
+function jsxStringSource(lit: T.StringLiteral): string {
+  const raw = lit.raw;
+  if (typeof raw === "string" && raw.length >= 2 && spellsJSXString(raw, lit.value)) return raw;
+  return '"' + lit.value.replace(JSX_STRING_SYNTAX, charReference) + '"';
+}
+
+function spellsJSXString(raw: string, value: string): boolean {
+  if (raw.indexOf("&") === -1) return quotes(raw, value);
+  return decodeJSXEntities(raw.slice(1, -1)) === value;
+}
+
+function quotes(raw: string, text: string): boolean {
+  return raw.length === text.length + 2 && raw.startsWith(text, 1);
+}
+
+function charReference(char: string): string {
+  return "&#" + char.charCodeAt(0) + ";";
 }
 
 function isDirective(node: Node): boolean {

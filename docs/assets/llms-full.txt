@@ -387,6 +387,7 @@ The scope tree follows the specification.
 - A function body scopes its `let` and `const` apart from the parameters, as TypeScript does.
 - A class decorator sees the scope around its class, and a member decorator sees the class scope.
 - Strict mode comes from modules, classes, and `"use strict"` directives.
+- In sloppy JavaScript, a plain function declared in a block or an `if` clause binds where a `var` of its name would, unless that `var` would be an error, as engines run it ([Annex B](https://tc39.es/ecma262/#sec-block-level-function-declarations-web-legacy-compatibility-semantics)).
 
 ## Symbols
 
@@ -898,7 +899,6 @@ The parser recovers from errors, so a file with diagnostics still has a program.
 | `tokens`         | `false`                                             | Collect `file.tokens`                                                                                                                     |
 | `semantic`       | `false`                                             | Build the [semantic model](#semantic-analysis)                                                                                            |
 | `semanticErrors` | `false`                                             | Also report the early errors that need scopes, such as redeclarations                                                                     |
-| `core`           | the core yuku ships                                 | The Zig core to run, such as one built with other options |
 
 A file holds what it was parsed with, so reading `file.tokens` or the model of a file parsed without them throws.
 
@@ -1087,7 +1087,7 @@ A field that tells the shapes of a type apart, such as `computed` on a `MemberEx
 `yuku/utils` has the small helpers.
 
 ```js
-import { is, isIdentifierName, isValidIdentifier, unwrap } from "yuku/utils";
+import { decodeJSXEntities, is, isIdentifierName, isValidIdentifier, unwrap } from "yuku/utils";
 
 is.CallExpression(node);
 is.Expression(node);              // aliases too
@@ -1101,6 +1101,8 @@ unwrap(node);                     // the expression inside every wrapper
 
 isValidIdentifier("class");       // false, reserved
 isIdentifierName("class");        // true
+
+decodeJSXEntities("a &amp; b");   // "a & b"
 ```
 
 It also has `isIdentifierStart`, `isIdentifierChar`, `isKeyword`, `isReservedWord`, `isStrictReservedWord`, and `isEvalOrArguments`.

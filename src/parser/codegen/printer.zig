@@ -119,6 +119,9 @@ const Printer = struct {
 
     stack_floor: usize = 0,
     links: std.ArrayList(Link) = .empty,
+    decoded: std.ArrayList(u8) = .empty,
+
+    const DecoratorLayout = enum { own_line, same_line };
 
     const Link = struct {
         idx: NodeIndex,
@@ -155,6 +158,7 @@ const Printer = struct {
         self.out.deinit();
         self.diagnostics.deinit(self.allocator);
         self.links.deinit(self.allocator);
+        self.decoded.deinit(self.allocator);
     }
 
     inline fn pretty(self: *const Self) bool {
@@ -399,6 +403,49 @@ const Printer = struct {
         self.recordMapping(idx);
         try self.out.writeStr(text);
         try self.closeComments(idx, scope, false);
+    }
+
+    fn writeNodeQuoted(
+        self: *Self,
+        idx: NodeIndex,
+        quote: u8,
+        value: []const u8,
+        comptime references: []const u8,
+    ) Error!void {
+        std.debug.assert(quote == '"' or quote == '\'');
+        const scope = try self.openComments(idx);
+        self.recordMapping(idx);
+        try self.out.writeByte(quote);
+        try self.writeCharReferences(value, references);
+        try self.out.writeRawByte(quote);
+        try self.closeComments(idx, scope, false);
+    }
+
+    fn writeCharReferences(
+        self: *Self,
+        text: []const u8,
+        comptime references: []const u8,
+    ) Error!void {
+        comptime for (references) |c| std.debug.assert(c < 0x80);
+        var start: usize = 0;
+        for (text, 0..) |c, i| {
+            if (std.mem.findScalar(u8, references, c) == null) continue;
+            var buffer: [6]u8 = undefined;
+            const reference = std.fmt.bufPrint(&buffer, "&#{d};", .{c}) catch unreachable;
+            try self.out.writeRawStr(text[start..i]);
+            try self.out.writeRawStr(reference);
+            start = i + 1;
+        }
+        std.debug.assert(start <= text.len);
+        try self.out.writeRawStr(text[start..]);
+    }
+
+    fn jsxDecodesTo(self: *Self, raw: []const u8, value: []const u8) Error!bool {
+        if (std.mem.findScalar(u8, raw, '&') == null) return std.mem.eql(u8, raw, value);
+        self.decoded.clearRetainingCapacity();
+        try lexical.decodeJSXEntities(self.allocator, raw, &self.decoded);
+        std.debug.assert(self.decoded.items.len <= raw.len);
+        return std.mem.eql(u8, self.decoded.items, value);
     }
 
     fn emitOwedComments(self: *Self) Error!void {
@@ -1077,7 +1124,14 @@ const Printer = struct {
         // an escaped `"use strict"` does not enable strict mode, so the raw lexeme must survive
         switch (self.nodeData(d.expression)) {
             .string_literal => |lit| {
-                try self.writeNodeText(d.expression, self.tree.string(lit.raw));
+                const raw = self.tree.string(lit.raw);
+                const text = self.tree.string(d.value);
+                if (raw.len >= 2 and std.mem.eql(u8, raw[1 .. raw.len - 1], text)) {
+                    try self.writeNodeText(d.expression, raw);
+                } else {
+                    const quote: u8 = if (std.mem.findScalar(u8, text, '"') == null) '"' else '\'';
+                    try self.writeNodeQuoted(d.expression, quote, text, "");
+                }
             },
             else => try self.emit(d.expression),
         }
@@ -1708,8 +1762,9 @@ const Printer = struct {
     }
 
     fn emit_regexp_literal(self: *Self, lit: *const ast.RegExpLiteral) Error!void {
+        const pattern = self.tree.string(lit.pattern);
         try self.out.writeByte('/');
-        try self.out.writeRawStr(self.tree.string(lit.pattern));
+        try self.out.writeRawStr(if (pattern.len != 0) pattern else "(?:)");
         try self.out.writeRawByte('/');
         try self.out.writeRawStr(self.tree.string(lit.flags));
     }
@@ -1796,7 +1851,7 @@ const Printer = struct {
 
     fn emit_binding_identifier(self: *Self, id: *const ast.BindingIdentifier) Error!void {
         const definite = self.takeDefinite();
-        if (!self.options.strip) try self.printDecorators(id.decorators);
+        if (!self.options.strip) try self.printDecorators(id.decorators, .same_line);
         try self.writeString(id.name);
         if (id.optional) try self.emitInsideCommentsInline(self.current_idx);
         try self.printBindingSuffix(id.optional, definite, id.type_annotation);
@@ -1812,7 +1867,7 @@ const Printer = struct {
     }
 
     fn emit_assignment_pattern(self: *Self, p: *const ast.AssignmentPattern) Error!void {
-        if (!self.options.strip) try self.printDecorators(p.decorators);
+        if (!self.options.strip) try self.printDecorators(p.decorators, .same_line);
         try self.emit(p.left);
         try self.printBindingSuffix(p.optional, false, p.type_annotation);
         try self.printSpaced('=');
@@ -1820,7 +1875,7 @@ const Printer = struct {
     }
 
     fn emit_binding_rest_element(self: *Self, r: *const ast.BindingRestElement) Error!void {
-        if (!self.options.strip) try self.printDecorators(r.decorators);
+        if (!self.options.strip) try self.printDecorators(r.decorators, .same_line);
         try self.out.writeStr("...");
         try self.emit(r.argument);
         try self.printBindingSuffix(r.optional, false, r.type_annotation);
@@ -1828,7 +1883,7 @@ const Printer = struct {
 
     fn emit_array_pattern(self: *Self, p: *const ast.ArrayPattern) Error!void {
         const definite = self.takeDefinite();
-        if (!self.options.strip) try self.printDecorators(p.decorators);
+        if (!self.options.strip) try self.printDecorators(p.decorators, .same_line);
         try self.out.writeByte('[');
         try self.emitInsideCommentsInline(self.current_idx);
         const list = self.tree.extra(p.elements);
@@ -1848,7 +1903,7 @@ const Printer = struct {
 
     fn emit_object_pattern(self: *Self, p: *const ast.ObjectPattern) Error!void {
         const definite = self.takeDefinite();
-        if (!self.options.strip) try self.printDecorators(p.decorators);
+        if (!self.options.strip) try self.printDecorators(p.decorators, .same_line);
         try self.out.writeByte('{');
         try self.emitInsideCommentsInline(self.current_idx);
         const list = self.tree.extra(p.properties);
@@ -1994,7 +2049,7 @@ const Printer = struct {
 
     fn emit_class(self: *Self, c: *const ast.Class, ctx: Ctx) Error!void {
         if (self.options.strip) if (c.declare) return;
-        if (!ctx.no_decorators) try self.printDecorators(c.decorators);
+        if (!ctx.no_decorators) try self.printDecorators(c.decorators, .own_line);
         if (!self.options.strip) {
             if (c.declare) try self.out.writeStr("declare ");
             if (c.abstract) try self.out.writeStr("abstract ");
@@ -2049,7 +2104,7 @@ const Printer = struct {
     fn emit_method_definition(self: *Self, m: *const ast.MethodDefinition) Error!void {
         const fn_data = self.nodeData(m.value).function;
         if (self.options.strip) if (m.abstract or fn_data.body == .null) return;
-        try self.printDecorators(m.decorators);
+        try self.printDecorators(m.decorators, .own_line);
         try self.hoistKeyComments(m.key);
         defer self.skip_leading_of = .null;
         if (!self.options.strip) try self.printAccessibility(m.accessibility);
@@ -2073,7 +2128,7 @@ const Printer = struct {
 
     fn emit_property_definition(self: *Self, p: *const ast.PropertyDefinition) Error!void {
         if (self.options.strip) if (p.declare or p.abstract) return;
-        try self.printDecorators(p.decorators);
+        try self.printDecorators(p.decorators, .own_line);
         try self.hoistKeyComments(p.key);
         defer self.skip_leading_of = .null;
         if (!self.options.strip) {
@@ -2130,16 +2185,20 @@ const Printer = struct {
         unreachable;
     }
 
-    fn printDecorators(self: *Self, decs: IndexRange) Error!void {
+    fn printDecorators(
+        self: *Self,
+        decs: IndexRange,
+        comptime layout: DecoratorLayout,
+    ) Error!void {
         const list = self.tree.extra(decs);
         if (list.len == 0) return;
         const carry = self.out.map_start;
         for (list, 0..) |d, i| {
             try self.emit(d);
             // `@a.b class` would fuse to `@a.bclass` without a separator
-            if (self.pretty()) {
+            if (self.pretty() and layout == .own_line) {
                 try self.newline();
-            } else if (i + 1 == list.len) {
+            } else if (self.pretty() or i + 1 == list.len) {
                 try self.out.writeByte(' ');
             }
         }
@@ -2242,7 +2301,7 @@ const Printer = struct {
             }
         }
         const hoisted = self.decoratorsBeforeExport(d.declaration);
-        if (hoisted) |decorators| try self.printDecorators(decorators);
+        if (hoisted) |decorators| try self.printDecorators(decorators, .own_line);
         try self.out.writeStr("export");
         if (d.export_kind == .type and d.declaration == .null) try self.out.writeStr(" type");
         if (d.declaration != .null) {
@@ -2273,7 +2332,7 @@ const Printer = struct {
         if (self.nodeData(d.declaration).isDeclaration()) {
             if (try self.skipStripped(d.declaration)) return;
             const hoisted = self.decoratorsBeforeExport(d.declaration);
-            if (hoisted) |decorators| try self.printDecorators(decorators);
+            if (hoisted) |decorators| try self.printDecorators(decorators, .own_line);
             try self.out.writeStr("export default ");
             return self.emitExpr(d.declaration, .{ .no_decorators = hoisted != null });
         }
@@ -2878,7 +2937,7 @@ const Printer = struct {
     }
 
     fn emit_ts_parameter_property(self: *Self, p: *const ast.TSParameterProperty) Error!void {
-        try self.printDecorators(p.decorators);
+        try self.printDecorators(p.decorators, .same_line);
         try self.printAccessibility(p.accessibility);
         if (p.override) try self.out.writeStr("override ");
         if (p.readonly) try self.out.writeStr("readonly ");
@@ -2944,9 +3003,16 @@ const Printer = struct {
         try self.emit(a.name);
         if (a.value != .null) {
             try self.out.writeByte('=');
-            // jsx attribute strings have no escapes, the raw lexeme is the value
             switch (self.nodeData(a.value)) {
-                .string_literal => |lit| try self.writeNodeText(a.value, self.tree.string(lit.raw)),
+                .string_literal => |lit| {
+                    const raw = self.tree.string(lit.raw);
+                    const value = self.tree.string(lit.value);
+                    if (raw.len >= 2 and try self.jsxDecodesTo(raw[1 .. raw.len - 1], value)) {
+                        try self.writeNodeText(a.value, raw);
+                    } else {
+                        try self.writeNodeQuoted(a.value, '"', value, "\"&");
+                    }
+                },
                 else => try self.emit(a.value),
             }
         }
@@ -2985,7 +3051,10 @@ const Printer = struct {
     }
 
     fn emit_jsx_text(self: *Self, t: *const ast.JSXText) Error!void {
-        try self.out.writeRawStr(self.tree.string(t.raw));
+        const raw = self.tree.string(t.raw);
+        const value = self.tree.string(t.value);
+        if (try self.jsxDecodesTo(raw, value)) return self.out.writeRawStr(raw);
+        try self.writeCharReferences(value, "&<>{}");
     }
 
     fn emit_jsx_spread_child(self: *Self, c: *const ast.JSXSpreadChild) Error!void {
