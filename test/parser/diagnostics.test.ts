@@ -63,6 +63,39 @@ describe("diagnostics", () => {
       ["let x = 1; /* c", 15],
     ] as const) expect(firstSpan(source), source).toEqual([at, at]);
   });
+
+  test("export binding diagnostics keep their own specifier tags after scratch reuse", () => {
+    for (const [prefix, count] of [
+      ["", 2],
+      ["export {}; ", 2],
+      ['export { default as named, "remote" as value } from "dep" with { type: "json" }; ', 2],
+      ['export { type T } from "dep"; ', 2],
+      ["export { broken, ;\n", 3],
+      ["export { default as named } from ;\n", 3],
+    ] as const) {
+      const source = prefix + 'export { local, class as reserved, "name" as quoted, other as renamed };';
+      for (const tokens of [false, true]) {
+        const { diagnostics } = parse(source, { lang: "ts", tokens });
+        expect(diagnostics, source).toHaveLength(count);
+        expect(
+          diagnostics.slice(-2).map((d) => ({
+            text: source.slice(d.start, d.end),
+            message: d.message,
+          })),
+          source,
+        ).toEqual([
+          {
+            text: "class",
+            message: "A reserved word cannot be used as an exported binding without 'from'",
+          },
+          {
+            text: '"name"',
+            message: "A string literal cannot be used as an exported binding without 'from'",
+          },
+        ]);
+      }
+    }
+  });
 });
 
 describe("encoding", () => {

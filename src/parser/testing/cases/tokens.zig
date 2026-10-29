@@ -64,6 +64,35 @@ test "tokensIn returns the tokens wholly within a span" {
     try std.testing.expectEqual(0, untokenized.tokensIn(.{ .start = 0, .end = 6 }).len);
 }
 
+test "export specifier token tags stay out of AST extras" {
+    const sources = [_][]const u8{
+        "export {};",
+        "export { local, other as renamed };",
+        "export { default as named, \"remote\" as alias } from 'dep' with { type: 'json' };",
+        "export { type T, type U as V, value }; export type { T };",
+        "export {" ++ helpers.repeat("local,", 300) ++
+            "}; export { default as named } from 'dep'; export {}; export { other };",
+    };
+    for (sources) |source| {
+        var tree = try parser.parse(std.testing.allocator, source, .{ .lang = .ts });
+        defer tree.deinit();
+        try std.testing.expect(!tree.hasErrors());
+
+        const body = tree.data(tree.root).program.body;
+        var extra_count: usize = body.len;
+        for (tree.extra(body)) |node| {
+            const declaration = tree.data(node).export_named_declaration;
+            extra_count += declaration.specifiers.len + declaration.attributes.len;
+            if (declaration.source != .null) continue;
+            for (tree.extra(declaration.specifiers)) |specifier| {
+                const local = tree.data(specifier).export_specifier.local;
+                try std.testing.expect(tree.data(local) == .identifier_reference);
+            }
+        }
+        try std.testing.expectEqual(extra_count, tree.extras.items.len);
+    }
+}
+
 fn expectTexts(tree: *const ast.Tree, range: ast.Span, expected: []const []const u8) !void {
     const tokens = tree.tokensIn(range);
     try std.testing.expectEqual(expected.len, tokens.len);
