@@ -2,6 +2,20 @@
 
 What changed in each release of Yuku, newest first. Releases up to 0.14.0 are listed on [GitHub](https://github.com/yuku-toolchain/yuku/releases).
 
+## 0.26.0
+
+### Breaking
+
+- `print` runs Yuku's Zig printer, so the `printers` option and the `Printer` and `Printers` types are removed. Replace a node type of your own with standard nodes before printing it (#304 by @arshad-yaseen)
+- `parse` takes `analyze: true` in place of `semantic: true` (#304 by @arshad-yaseen)
+
+### Changes
+
+- `file.reanalyze()` builds the semantic model again for a program edited since it was parsed, on the same node objects, so nodes added without a position resolve too (#304 by @arshad-yaseen)
+- `print` throws a `TypeError` that names the field when a node does not fit the AST, as in `` `ClassBody.body` cannot be Identifier `` (#304 by @arshad-yaseen)
+- `capturesOf` no longer counts the names in a decorator as uses inside the function it decorates (#304 by @arshad-yaseen)
+- A comment built without a `position` prints before its node instead of being dropped (#304 by @arshad-yaseen)
+
 ## 0.25.0
 
 ### Breaking
