@@ -47,10 +47,10 @@ see [how Yuku is tested](https://yuku.fyi/testing/).
 
 ### Change the codegen
 
-The Zig printer, `src/parser/codegen/printer.zig`, and the JavaScript one,
-`npm/yuku/print/printer.ts`, mirror each other function by function, so
-a change lands in both. `bun run test:codegen` prints the test corpus with each
-and fails on any difference.
+The printer is `src/parser/codegen/printer.zig`, and `print` runs it on the tree
+that `npm/yuku/core/encode.js` writes from ESTree. `bun run test:codegen` prints
+the test corpus from both the parsed and the encoded tree and fails on any
+difference.
 
 ## Find your way around
 
@@ -68,10 +68,10 @@ src/parser/
   ffi/           Node-API and WebAssembly bindings
   testing/       Zig tests and the fuzzer
 npm/yuku/        the published package, one entry in index.ts
-  core/          the addon and WebAssembly loaders, and the decoder
+  core/          the addon and WebAssembly loaders, the decoder, and the encoder
   ast/           walk, builders, and utils
   file/          SourceFile, Project, the semantic model, and rename
-  print/         the printer and source maps
+  print/         print and its options
   types/         the AST types
 npm/wasm/        the core as WebAssembly, for edge runtimes
 npm/*-*/         the core as a Node-API addon, one package per platform
@@ -82,8 +82,8 @@ docs/            the website
 
 ## Edit the docs
 
-[yuku.fyi](https://yuku.fyi) documents Yuku and its Zig API, from the Markdown
-files in `docs/content/`. Preview them with
+[yuku.fyi](https://yuku.fyi) documents the JavaScript package and the Zig API,
+from the Markdown files in `docs/content/`. Preview them with
 [Zine](https://github.com/kristoff-it/zine/releases) 0.11.3:
 
 ```bash
