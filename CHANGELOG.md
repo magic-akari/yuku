@@ -2,6 +2,23 @@
 
 What changed in each release of Yuku, newest first. Releases up to 0.14.0 are listed on [GitHub](https://github.com/yuku-toolchain/yuku/releases).
 
+## 0.25.0
+
+### Breaking
+
+- `JSXText.raw` is optional in the types, as `raw` is on every `Literal`, since a built node has none, so read it as `string | undefined` (#303 by @arshad-yaseen)
+
+### Changes
+
+- `print` keeps a literal's, directive's, or JSX text's source text only while it still spells the value, so an edited `value` is printed instead of being ignored, and a node built without `raw`, such as `b.JSXText({ value: "a < b" })`, prints valid JSX (#303 by @arshad-yaseen)
+- `decodeJSXEntities` in `yuku/utils` decodes the character references in JSX text and attribute strings (#303 by @arshad-yaseen)
+- In sloppy JavaScript, a function declared in a block also binds where a `var` of its name would, as engines run it, so a use after the block resolves to it and renaming it renames that use too (#303 by @arshad-yaseen)
+- A diagnostic from the lexer covers the whole character it points at, so an emoji is no longer split in half, and a trailing numeric separator such as `1_;` is reported at the `_` (#303 by @arshad-yaseen)
+- The pretty format keeps a parameter's decorators on its line, as in `constructor(@Inject() private a: A)` (#303 by @arshad-yaseen)
+- Printing `(value?.prop)!.x` parsed with `preserveParens: false` keeps the parentheses that end the optional chain (#297 by @magic-akari)
+- Parsing does 2 to 5% less work, and semantic analysis 1 to 3% less (#302 by @arshad-yaseen)
+- Zig: `ast.JSXText` has its decoded `value` again (#303 by @arshad-yaseen)
+
 ## 0.24.1
 
 ### Changes
