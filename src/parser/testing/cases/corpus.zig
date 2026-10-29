@@ -114,7 +114,15 @@ fn verifySymbols(tree: *const ast.Tree, sem: *const Semantic) !void {
         if (decls.len == 0) return error.SymbolWithoutDeclaration;
         for (decls) |decl| {
             if (decl == .null) return error.NullDeclarationNode;
-            if (sem.symbolOf(decl) != id) return error.DeclarationNodeMismatch;
+            const owner = sem.symbolOf(decl) orelse return error.DeclarationNodeMismatch;
+            if (owner != id) {
+                const lexical = sem.symbol(owner);
+                const scope = sem.scopes.get(lexical.scope);
+                if (!symbol.flags.function_scoped_var) return error.DeclarationNodeMismatch;
+                if (!lexical.flags.function) return error.DeclarationNodeMismatch;
+                if (scope.kind != .block) return error.DeclarationNodeMismatch;
+                if (scope.hoist_target != symbol.scope) return error.DeclarationNodeMismatch;
+            }
         }
 
         const name = tree.string(symbol.name);

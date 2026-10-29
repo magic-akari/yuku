@@ -1,11 +1,17 @@
 import { expect, test } from "bun:test";
 import ts from "typescript";
-import type { SourceType } from "yuku";
+import type { Binding, Node, SourceType } from "yuku";
 import type { CorpusFile } from "../../corpus";
 
 export interface Comparison {
   compared: number;
   mismatches: string[];
+}
+
+// static reference models omit Annex B's additional runtime var declarations
+export function explicitDeclarations(binding: Binding | null): readonly Node[] {
+    if (binding === null) return [];
+    return binding.declarations.filter((node) => binding.file.bindingOf(node) === binding);
 }
 
 // reason, then path, then the exact mismatches that file must show

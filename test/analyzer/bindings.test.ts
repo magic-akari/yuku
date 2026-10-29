@@ -76,6 +76,195 @@ describe("variable kinds", () => {
   });
 });
 
+describe("Annex B block functions", () => {
+    test("sloppy scripts keep separate lexical and var bindings", () => {
+        // inspect both environments and the recursive reference inside the declaration
+        expect(summary(`{ function inner() { return inner; } } inner();`, {
+            lang: "js", sourceType: "script",
+        })).toMatchInlineSnapshot(`
+          "global
+            inner#1  var
+            inner → #1
+            block BlockStatement
+              inner#0  function
+              function "inner"
+                functionBody BlockStatement
+                  inner → #0"
+        `);
+        expect(summary(`function outer() { { function inner() {} } inner(); }`, {
+            lang: "js", sourceType: "script",
+        })).toMatchInlineSnapshot(`
+          "global
+            outer#0  function
+            function "outer"
+              inner#2  var
+              functionBody BlockStatement
+                inner → #2
+                block BlockStatement
+                  inner#1  function
+                  function "inner"
+                    functionBody BlockStatement"
+        `);
+        expect(summary(`if (condition) function inner() { return inner; } inner();`, {
+            lang: "js", sourceType: "script",
+        })).toMatchInlineSnapshot(`
+          "global
+            inner#1  var
+            condition → free
+            inner → #1
+            block FunctionDeclaration
+              inner#0  function
+              function "inner"
+                functionBody BlockStatement
+                  inner → #0"
+        `);
+    });
+
+    test("completed lexical environments decide which functions get companions", () => {
+        // count companion declarations, including blockers declared after the candidate
+        const cases: [string, number][] = [
+            ["{ function f() {} } f;", 1],
+            ["{ function f() { 'use strict'; } } f;", 1],
+            ["if (condition) function f() { 'use strict'; } f;", 1],
+            ["{ function f() {} function f(value) {} } f;", 2],
+            ["{ function f() {} { function f(value) {} } } f;", 1],
+            ["{ { function f(value) {} } function f() {} } f;", 1],
+            ["{ function f() {} } { function f(value) {} } f;", 2],
+            ["{ function f() {} if (condition) function f(value) {} } f;", 1],
+            ["switch (value) { case 0: function f() {} } f;", 1],
+            ["try {} catch { function f() {} } f;", 1],
+            ["try {} catch (f) { { function f() {} } } f;", 1],
+            ["try {} catch ({f}) { { function f() {} } } f;", 0],
+            ["try {} catch ([f = 1]) { { function f() {} } } f;", 0],
+            ["let f; { function f() {} }", 0],
+            ["{ function f() {} } let f;", 0],
+            ["{ let f; { function f() {} } }", 0],
+            ["{ { function f() {} } let f; }", 0],
+            ["{ class f {} { function f() {} } }", 0],
+            ["{ function* f() {} } f;", 0],
+            ["{ async function f() {} } f;", 0],
+            ["'use strict'; { function f() {} } f;", 0],
+            ["function outer() { 'use strict'; { function f() {} } f; }", 0],
+            ["function outer(f) { { function f() {} } f; }", 0],
+            ["function outer(f = 1) { { function f() {} } f; }", 0],
+            ["function outer(value = 1) { { function f() {} } f; }", 1],
+            ["let f; function outer() { { function f() {} } f; }", 1],
+            ["{ function f() {} function g() { { function f() {} } f; } }", 2],
+            ["if (condition) function f() {} else function f(value) {} f;", 2],
+        ];
+        for (const lang of ["js", "ts"] as const) {
+            for (const semanticErrors of [false, true]) {
+                for (const [source, count] of cases) {
+                    const file = parse(source, {
+                        lang, sourceType: "script", semantic: true, semanticErrors,
+                    });
+                    expect(file.diagnostics, source).toEqual([]);
+                    const companions = file.bindings.filter((binding) =>
+                        binding.name === "f" &&
+                        binding.has(BindingFlags.FunctionScopedVariable) &&
+                        !binding.has(BindingFlags.Parameter | BindingFlags.CatchVariable));
+                    const declarations = companions.flatMap((binding) => binding.declarations);
+                    expect(declarations.length, source).toBe(count);
+                    for (const binding of companions) {
+                        for (const declaration of binding.declarations) {
+                            const lexical = file.bindingOf(declaration)!;
+                            expect(lexical, source).not.toBe(binding);
+                            expect(lexical.has(BindingFlags.Function), source).toBe(true);
+                            expect(lexical.scope.kind, source).toBe("block");
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    test("companions merge with vars without replacing the lexical declaration link", () => {
+        // declaration order stays lexical even when the explicit var comes later
+        for (const source of [
+            "var f; { function f() { return f; } } f;",
+            "{ function f() { return f; } } var f; f;",
+            "function f() {} { function f() { return f; } } f;",
+        ]) {
+            const file = parse(source, { lang: "js", sourceType: "script", semantic: true });
+            expect(file.diagnostics).toEqual([]);
+            const outer = file.rootScope.find("f")!;
+            expect(outer.declarations).toHaveLength(2);
+            expect(outer.declarations[0]!.start).toBeLessThan(outer.declarations[1]!.start);
+            const [innerUse, outerUse] = file.references;
+            expect(innerUse!.binding).not.toBe(outer);
+            expect(outerUse!.binding).toBe(outer);
+            const lexical = innerUse!.binding!;
+            expect(file.bindingOf(lexical.declarations[0]!)).toBe(lexical);
+        }
+    });
+
+    test("an ancestor block function prevents a nested companion of the same name", () => {
+        // only the outer declaration contributes, regardless of its position in the block
+        for (const source of [
+            "{ function f() {} { function f(value) {} } } f;",
+            "{ { function f(value) {} } function f() {} } f;",
+            "{ function f() {} if (condition) function f(value) {} } f;",
+            "switch (value) { case 0: function f() {} { function f(value) {} } } f;",
+        ]) {
+            const file = parse(source, { lang: "js", sourceType: "script", semantic: true });
+            expect(file.diagnostics).toEqual([]);
+            const outer = file.rootScope.find("f")!;
+            expect(outer.declarations.map((node) => node.start)).toEqual([source.indexOf("f()")]);
+        }
+    });
+
+    test("modules and implicit arguments do not gain companion bindings", () => {
+        // strict modules and the implicit arguments object keep their existing resolution
+        expect(summary("{ function f() {} } f;", { lang: "js", sourceType: "module" }))
+            .toMatchInlineSnapshot(`
+              "global
+                module [strict]
+                  f → free
+                  block BlockStatement
+                    f#0  function
+                    function "f"
+                      functionBody BlockStatement"
+            `);
+        expect(summary("function outer() { { function arguments() {} } arguments; }", {
+            lang: "js", sourceType: "script",
+        })).toMatchInlineSnapshot(`
+          "global
+            outer#0  function
+            function "outer"
+              functionBody BlockStatement
+                arguments → free
+                block BlockStatement
+                  arguments#1  function
+                  function "arguments"
+                    functionBody BlockStatement"
+        `);
+    });
+
+    test("an invalid block redeclaration does not create a companion", () => {
+        // recovery can reuse a catch or var binding instead of declaring a lexical function
+        for (const source of [
+            "try {} catch (f) { function f() {} } f;",
+            "{ var f; function f() {} } f;",
+        ]) {
+            const file = parse(source, {
+                lang: "js", sourceType: "script", semantic: true, semanticErrors: true,
+            });
+            expect(file.diagnostics.length).toBeGreaterThan(0);
+            expect(file.bindings).toHaveLength(1);
+        }
+    });
+
+    test("a class merged with a block function prevents its companion", () => {
+        // the shared symbol must retain the class's lexical restriction
+        const file = parse("{ declare class f {} function f() {} } f;", {
+            lang: "ts", sourceType: "script", semantic: true, semanticErrors: true,
+        });
+        expect(file.diagnostics).toEqual([]);
+        expect(file.bindings).toHaveLength(1);
+        expect(file.references[0]!.binding).toBeNull();
+    });
+});
+
 describe("TypeScript declarations", () => {
   test("interface, type alias, enum, const enum", () => {
     expect(summary(`interface I {} type A = number; enum E {} const enum CE {}`))

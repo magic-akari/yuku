@@ -317,7 +317,7 @@ pub const Checker = struct {
         }
         if (func.type != .function_declaration) return .proceed;
 
-        const is_strict = isStrict(ctx);
+        const is_strict = ctx.scope.get(ctx.symbols.pending.scope).flags.strict;
         var through_labels = false;
         var iter = ctx.path.ancestors();
         _ = iter.next(); // skip self

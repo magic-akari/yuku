@@ -2,6 +2,7 @@ const std = @import("std");
 const ast = @import("../ast.zig");
 const static_semantics = @import("spec").static_semantics;
 const sc = @import("scope.zig");
+const annex_b = @import("annex_b.zig");
 
 const Allocator = std.mem.Allocator;
 const String = ast.String;
@@ -493,9 +494,11 @@ pub const Mode = enum {
 pub const SymbolTracker = struct {
     tree: *const ast.Tree,
     allocator: Allocator,
+    mode: Mode,
     symbols: std.ArrayList(Symbol) = .empty,
     references: std.ArrayList(Reference) = .empty,
     decl_pairs: std.ArrayList(DeclPair) = .empty,
+    annex_b_functions: std.ArrayList(annex_b.Function) = .empty,
     // parallel to `symbols`
     first_decls: std.ArrayList(ast.NodeIndex) = .empty,
     scope_maps: std.ArrayList(ScopeMap) = .empty,
@@ -543,6 +546,7 @@ pub const SymbolTracker = struct {
         var self = SymbolTracker{
             .tree = tree,
             .allocator = alloc,
+            .mode = mode,
             .ambient = tree.lang == .dts,
             .excluded_imports = if (tree.isTs()) .{} else Symbol.any_import,
         };
@@ -625,6 +629,18 @@ pub const SymbolTracker = struct {
                     kind == .function_body or
                     kind == .global or
                     kind == .static_block;
+
+                if (self.mode == .analyze and is_decl and !ambient) {
+                    if (!func.async and !func.generator) {
+                        if (kind == .block and !scope.get(target).flags.strict) {
+                            std.debug.assert(func.id != .null);
+                            try self.annex_b_functions.append(self.allocator, .{
+                                .node = func.id,
+                                .scope = target,
+                            });
+                        }
+                    }
+                }
 
                 self.pending = .{
                     .flags = .{ .function = true, .ambient = ambient },
@@ -1244,6 +1260,128 @@ pub const SymbolTracker = struct {
         };
     }
 
+    fn bindAnnexBFunctions(self: *SymbolTracker, scopes: sc.ScopeTree) Allocator.Error!void {
+        if (self.annex_b_functions.items.len == 0) return;
+        std.debug.assert(self.saved_stack.items.len == 0);
+        std.debug.assert(self.export_state == .none);
+
+        // a conflicting declaration or a merged class prevents a companion
+        var count: u32 = 0;
+        for (self.annex_b_functions.items) |function| {
+            const name = self.tree.data(function.node).binding_identifier.name;
+            const id = self.ownBinding(function.scope, self.tree.string(name)) orelse continue;
+            const flags = self.symbol(id).flags;
+            if (!flags.function) continue;
+            if (flags.intersects(.{
+                .class = true,
+                .block_scoped_var = true,
+                .parameter = true,
+                .catch_var = true,
+            })) continue;
+            self.annex_b_functions.items[count] = function;
+            count += 1;
+        }
+        self.annex_b_functions.shrinkRetainingCapacity(count);
+        if (count == 0) return;
+
+        const eligible = try annex_b.eligible(
+            self.allocator,
+            self.tree,
+            scopes,
+            self.symbols.items,
+            self.annex_b_functions.items,
+        );
+        const pending = self.pending;
+        defer self.pending = pending;
+        const explicit = self.decl_pairs.items.len;
+
+        for (self.annex_b_functions.items, eligible) |function, allowed| {
+            if (!allowed) continue;
+            const target = scopes.get(function.scope).hoist_target;
+            const scope = scopes.get(target);
+            const name = self.tree.data(function.node).binding_identifier.name;
+            const text = self.tree.string(name);
+            if (scope.kind == .function_body) {
+                if (self.ownBinding(scope.parent, text)) |id| {
+                    if (self.symbol(id).flags.parameter) continue;
+                }
+            }
+            if (scope.kind != .global and std.mem.eql(u8, text, "arguments")) {
+                if (self.ownBinding(target, text) == null) continue;
+            }
+            self.pending = .{
+                .flags = .{ .function_scoped_var = true },
+                .excludes = Symbol.Excludes.function_scoped_var,
+                .scope = target,
+            };
+            _ = try self.declare(name, function.node, scopes.list);
+        }
+        try self.bindAnnexBOrderDeclarations(explicit);
+    }
+
+    fn bindAnnexBOrderDeclarations(self: *SymbolTracker, explicit: usize) Allocator.Error!void {
+        std.debug.assert(explicit <= self.decl_pairs.items.len);
+        const count = self.decl_pairs.items.len;
+        if (count == explicit) return;
+        var companions: std.AutoHashMapUnmanaged(ast.NodeIndex, SymbolId) = .empty;
+        try companions.ensureTotalCapacity(self.allocator, @intCast(count - explicit));
+        for (self.decl_pairs.items[explicit..]) |pair| {
+            companions.putAssumeCapacityNoClobber(pair.node, pair.symbol);
+        }
+        var ordered: std.ArrayList(DeclPair) = .empty;
+        try ordered.ensureTotalCapacity(self.allocator, count);
+        for (self.decl_pairs.items[0..explicit]) |pair| {
+            ordered.appendAssumeCapacity(pair);
+            if (companions.get(pair.node)) |symbol_id| {
+                ordered.appendAssumeCapacity(.{ .node = pair.node, .symbol = symbol_id });
+            }
+        }
+        std.debug.assert(ordered.items.len == count);
+        self.decl_pairs = ordered;
+        try self.bindAnnexBOrderSymbols();
+    }
+
+    fn bindAnnexBOrderSymbols(self: *SymbolTracker) Allocator.Error!void {
+        const count = self.symbols.items.len;
+        std.debug.assert(self.first_decls.items.len == count);
+        const remap = try self.allocator.alloc(SymbolId, count);
+        @memset(remap, .none);
+        const symbols = try self.allocator.alloc(Symbol, count);
+        const first_decls = try self.allocator.alloc(ast.NodeIndex, count);
+        var next: u32 = 0;
+        for (self.decl_pairs.items) |*pair| {
+            const old = @backingInt(pair.symbol);
+            if (remap[old] == .none) {
+                remap[old] = @fromBackingInt(next);
+                symbols[next] = self.symbols.items[old];
+                first_decls[next] = pair.node;
+                next += 1;
+            }
+            pair.symbol = remap[old];
+        }
+        std.debug.assert(next == count);
+        for (self.scope_maps.items) |*map| {
+            var values = map.valueIterator();
+            while (values.next()) |id| id.* = remap[@backingInt(id.*)];
+        }
+        for (self.hoisting_variables.items) |*map| {
+            var values = map.valueIterator();
+            while (values.next()) |id| id.* = remap[@backingInt(id.*)];
+        }
+        var ordered_bodies: std.AutoHashMapUnmanaged(SymbolId, sc.ScopeId) = .empty;
+        try ordered_bodies.ensureTotalCapacity(self.allocator, self.last_bodies.count());
+        var iterator = self.last_bodies.iterator();
+        while (iterator.next()) |entry| {
+            ordered_bodies.putAssumeCapacityNoClobber(
+                remap[@backingInt(entry.key_ptr.*)],
+                entry.value_ptr.*,
+            );
+        }
+        self.last_bodies = ordered_bodies;
+        self.symbols = .fromOwnedSlice(symbols);
+        self.first_decls = .fromOwnedSlice(first_decls);
+    }
+
     /// Finalizes the tracker into a `Semantic` that aliases its storage.
     pub fn finalize(
         self: *SymbolTracker,
@@ -1255,6 +1393,7 @@ pub const SymbolTracker = struct {
         std.debug.assert(self.export_state == .none);
 
         try self.syncScopeMaps(scopes.list.len);
+        try self.bindAnnexBFunctions(scopes);
         try padTo(sc.ScopeId, &self.next_bodies, self.allocator, scopes.list.len, .none);
 
         const decl_ranges = try self.allocator.alloc(Range, self.symbols.items.len);
@@ -1278,6 +1417,8 @@ pub const SymbolTracker = struct {
         @memset(node_links, NodeLink.none);
         for (self.decl_pairs.items) |pair| {
             const symbol_id: u31 = @intCast(@backingInt(pair.symbol));
+            // a companion shares syntax with the earlier lexical declaration
+            if (node_links[@backingInt(pair.node)] != NodeLink.none) continue;
             node_links[@backingInt(pair.node)] = .{ .id = symbol_id, .reference = false };
         }
         for (self.references.items, 0..) |ref, i| {

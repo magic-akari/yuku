@@ -13,7 +13,12 @@ import {
   type SourceType,
 } from "yuku";
 import { corpusAndProjectFiles, type CorpusFile } from "../corpus";
-import { differential, type Comparison, type Known } from "./utils/differential";
+import {
+    differential,
+    explicitDeclarations,
+    type Comparison,
+    type Known,
+} from "./utils/differential";
 
 const UNRESOLVED = -1;
 
@@ -89,6 +94,9 @@ function ownerOf(file: SourceFile, scope: Scope): string {
 }
 
 function declarationOwner(file: SourceFile, binding: Binding, node: Node): string | null {
+  if (binding.scope.kind === "block") {
+    if (binding.scope.node.type === "FunctionDeclaration") return null;
+  }
   if (file.parentOf(file.parentOf(node)!)?.type === "TSInferType") return null;
   if (binding.scope.kind !== "tsModule") return ownerOf(file, binding.scope);
   for (const ancestor of file.ancestors(node)) {
@@ -141,8 +149,10 @@ function compare(source: string, sourceType: SourceType, lang: SourceLang): Comp
     const binding = reference.binding;
     if (binding !== null && !binding.scope.contains(reference.scope)) continue;
     if (binding !== null && unmodeled(file, binding)) continue;
+    const declarations = explicitDeclarations(binding);
+    if (binding !== null && declarations.length === 0) continue;
     compared++;
-    const starts = binding?.declarations.map((declaration) => declaration.start) ?? [];
+    const starts = declarations.map((declaration) => declaration.start);
     const def = binding === null ? UNRESOLVED : Math.min(...starts);
     if (def !== their.def) {
       const node = their.def === UNRESOLVED ? null : file.nodeAt(their.def);
@@ -169,7 +179,7 @@ function compare(source: string, sourceType: SourceType, lang: SourceLang): Comp
 
   const ours = new Map<number, string | null>();
   for (const binding of file.bindings) {
-    for (const node of binding.declarations) {
+    for (const node of explicitDeclarations(binding)) {
       if (!isUnmodeled(file, node)) ours.set(node.start, declarationOwner(file, binding, node));
     }
   }
@@ -223,6 +233,8 @@ const KNOWN: Known = {
 type Snippet = [name: string, source: string, sourceType?: SourceType, lang?: SourceLang];
 
 const SNIPPETS: Snippet[] = [
+  ["Annex B lexical declarations and explicit vars", "var f; { function f() { return f; } } f;"],
+  ["Annex B runtime companions are separate", "{ function f() { return f; } } f;"],
   ["var hoisting across blocks", `var x; { var x = 1; } x;`],
   ["let shadowing", `let x = 1; { let x = 2; x; } x;`],
   ["function expression name", `const f = function self() { return self; };`],

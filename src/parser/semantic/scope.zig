@@ -185,6 +185,14 @@ pub const ScopeTracker = struct {
                 const flags = self.functionFlags(func.body);
                 const declaration = func.type == .function_declaration or
                     func.type == .ts_declare_function;
+                if (declaration and !func.async and !func.generator) {
+                    if (!self.currentScope().flags.strict and parent != .null) {
+                        if (self.tree.data(parent) == .if_statement) {
+                            // Annex B gives each unbraced branch its own lexical binding
+                            try self.pushScope(.block, index, self.inheritStrictFlag());
+                        }
+                    }
+                }
                 if (!declaration and func.id != .null) {
                     try self.pushScope(.expression_name, index, flags);
                 }

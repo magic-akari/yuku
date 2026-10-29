@@ -10,7 +10,7 @@ import type {
   JSXIdentifier,
   Node,
 } from "../types";
-import type { Binding } from "./semantic";
+import type { Binding, Scope } from "./semantic";
 import { diagnosticAt, type DiagnosticDetails, type SourceFile } from "./source-file";
 
 interface ExportSite {
@@ -27,7 +27,7 @@ export function rename(binding: Binding, name: string): Diagnostic[] {
   if (name === previous) return [];
   const identifiers = binding.declarations.filter((node) => node.type === "Identifier");
   const sites = exportSites(binding, identifiers);
-  const diagnostics = [...unsupported(binding, sites), ...conflicts(binding, name)];
+  const diagnostics = [...unsupported(binding, sites, name), ...conflicts(binding, name)];
   if (diagnostics.length > 0 || sites === null) return diagnostics;
 
   for (const identifier of identifiers) renameNode(binding.file, identifier, name);
@@ -36,12 +36,18 @@ export function rename(binding: Binding, name: string): Diagnostic[] {
   return [];
 }
 
-function unsupported(binding: Binding, sites: ExportSite[] | null): Diagnostic[] {
+function unsupported(binding: Binding, sites: ExportSite[] | null, nextName: string): Diagnostic[] {
   const { file, name } = binding;
   const diagnostics: Diagnostic[] = [];
   const report = (node: Node, reason: string) => {
     diagnostics.push(diagnosticAt(file, node, `Cannot rename '${name}', ${reason}`));
   };
+  if (affectsAnnexB(binding, nextName)) {
+    const declaration = binding.declarations[0];
+    if (declaration !== undefined) {
+      report(declaration, "which participates in Annex B block function bindings");
+    }
+  }
   for (const node of binding.declarations) {
     if (binding.has(BindingFlags.EnumMember)) {
       report(node, "which is an enum member read by name");
@@ -58,6 +64,35 @@ function unsupported(binding: Binding, sites: ExportSite[] | null): Diagnostic[]
     report(declaration, "which also names its export");
   }
   return diagnostics;
+}
+
+function affectsAnnexB(binding: Binding, name: string): boolean {
+    const { file, scope } = binding;
+    if (file.sourceType === "module") return false;
+    if (!binding.has(BindingFlags.ValueSpace)) return false;
+    const descendants = new Set<Scope>();
+    // parents precede children in the scope table
+    for (const current of file.scopes) {
+        if (current === scope || (current.parent !== null && descendants.has(current.parent))) {
+            descendants.add(current);
+        }
+    }
+    for (const candidate of file.bindings) {
+        if (candidate.name !== binding.name && candidate.name !== name) continue;
+        const local = candidate.scope;
+        if (local.kind !== "block" || local.strict || !descendants.has(local)) continue;
+        const target = local.hoistTarget;
+        if (target !== scope.hoistTarget) {
+            if (!binding.has(BindingFlags.Parameter)) continue;
+            if (target.kind !== "functionBody" || target.parent !== scope) continue;
+        }
+        for (const node of candidate.declarations) {
+            const parent = file.parentOf(node);
+            if (parent?.type !== "FunctionDeclaration") continue;
+            if (!parent.async && !parent.generator && !parent.declare) return true;
+        }
+    }
+    return false;
 }
 
 function conflicts(binding: Binding, name: string): Diagnostic[] {

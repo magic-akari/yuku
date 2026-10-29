@@ -463,7 +463,14 @@ export class Model {
       const { symbol } = this.semantic;
       for (let id = 0; id < symbol.count; id++) {
         const count = symbol.declCount(id);
-        for (let i = 0; i < count; i++) map.set(symbol.declNodeIndex(id, i), id);
+        for (let i = 0; i < count; i++) {
+            const node = symbol.declNodeIndex(id, i);
+            const previous = map.get(node);
+            // an Annex B companion shares syntax with its descendant lexical binding
+            if (previous === undefined || symbol.scopeId(id) > symbol.scopeId(previous)) {
+                map.set(node, id);
+            }
+        }
       }
       this.declarationsByNode = map;
     }

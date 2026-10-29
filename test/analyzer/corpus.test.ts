@@ -141,6 +141,10 @@ function check(path: string, source: string, sourceType: SourceType): void {
     if (declaration === undefined) continue;
     const owner = file.bindingOf(declaration);
     if (owner !== binding) {
+      const companion = binding.has(BindingFlags.FunctionScopedVariable) &&
+        owner?.has(BindingFlags.Function) && owner.scope.kind === "block" &&
+        owner.scope.hoistTarget === binding.scope;
+      if (companion) continue;
       const found = owner === null ? "null" : `#${owner.id}`;
       note("nodeIdentity", `${path}: bindingOf(decl ${binding.name}) is ${found}`);
     }

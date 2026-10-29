@@ -15,6 +15,21 @@ test("the inlined module parses as @yuku-toolchain/wasm does", () => {
   expect(custom.diagnostics).toEqual(inlined.diagnostics);
 });
 
+test("Annex B bindings retain both environments through WebAssembly", () => {
+    // serialize the shared declaration once and resolve its inner and outer uses separately
+    const core = new Core({ wasm: new WebAssembly.Module(shipped) });
+    const file = parse("{ function f() { return f; } } f;", {
+        lang: "js", sourceType: "script", semantic: true, core,
+    });
+    expect(file.diagnostics).toEqual([]);
+    const [inner, outer] = file.references;
+    expect(inner!.binding!.scope.kind).toBe("block");
+    expect(outer!.binding).toBe(file.rootScope.find("f"));
+    const declaration = inner!.binding!.declarations[0]!;
+    expect(outer!.binding!.declarations).toEqual([declaration]);
+    expect(file.bindingOf(declaration)).toBe(inner!.binding);
+});
+
 test("workerd and edge-light import the wasm package in the form their bundlers compile", () => {
   const manifest = new URL("../../npm/yuku/package.json", import.meta.url);
   const { imports, peerDependenciesMeta } = JSON.parse(readFileSync(manifest, "utf8"));

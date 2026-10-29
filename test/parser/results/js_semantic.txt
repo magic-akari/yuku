@@ -1,7 +1,7 @@
 test/parser/suite/js/semantic
 =============================
-Passed:       4190/4190 (100.00%)
-Failed:       0
+Passed:       4189/4190 (99.98%)
+Failed:       1
 
 ✓ test/parser/suite/js/semantic/000cb09bd89a5218.module.js
 error: 'with' statements are not allowed in strict mode
@@ -6342,18 +6342,7 @@ error: Cannot use import statement outside a module
  2 | export let local1 = 23;
    |
 
-✓ test/parser/suite/js/semantic/28b5bfa8d6eec5a5.js
-error: Identifier 'f' has already been declared
-   |
- 1 | if (0) function f() {} let f;
-   |                            ^
-   |                 ~ 'f' was first declared as a function here
-   |                            ~ cannot be redeclared here
- 2 | { if (0) function g() {} let g; }
-   |
-   = help: Consider removing or renaming this declaration of 'f'
-
-
+✗ test/parser/suite/js/semantic/28b5bfa8d6eec5a5.js (expected error, but parsed successfully)
 ✓ test/parser/suite/js/semantic/28be818a270b7e23.js
 error: Use of undefined label 'x'
    |

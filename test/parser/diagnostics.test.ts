@@ -27,6 +27,21 @@ describe("path", () => {
 });
 
 describe("diagnostics", () => {
+    test("a sloppy if function does not conflict with an enclosing lexical declaration", () => {
+        // the lexical declaration suppresses the companion var, not the branch function
+        for (const source of [
+            "if (0) function f() {} let f;",
+            "{ if (0) function f() {} let f; }",
+            "let f; if (0) function f() {} else function f() {}",
+            "function outer(f) { if (0) function f() {} }",
+            "if (0) function f() { 'use strict'; } f;",
+        ]) {
+            expect(parse(source, {
+                lang: "js", sourceType: "script", semanticErrors: true,
+            }).diagnostics, source).toEqual([]);
+        }
+    });
+
   test("a lexical diagnostic points at the cursor", () => {
     expect(firstSpan("let x = 0x_ab")).toEqual([10, 11]);
     expect(firstSpan("let x =   0x_ab")).toEqual([12, 13]);

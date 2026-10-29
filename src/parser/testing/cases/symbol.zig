@@ -258,3 +258,29 @@ test "module records collect an export pattern of any depth" {
     const records = try semantic.module_record.collect(&a.tree, &a.sem);
     try testing.expectEqual(@as(usize, 1), records.exports.len);
 }
+
+test "Annex B companion analysis propagates allocation failures" {
+    // inject failures into semantic allocations after parsing the AST succeeds
+    const source = "var f; { function f() {} { function g() {} } } f; g;";
+    for (0..512) |fail_index| {
+        var failing = testing.FailingAllocator.init(testing.allocator, .{
+            .fail_index = std.math.maxInt(usize),
+        });
+
+        var tree = try parser.parse(failing.allocator(), source, .{
+            .lang = .js,
+            .source_type = .script,
+        });
+        defer tree.deinit();
+
+        try testing.expect(!tree.hasErrors());
+        failing.fail_index = failing.alloc_index + fail_index;
+        _ = parser.semantic.analyze(&tree, .{ .check = true }) catch |err| {
+            try testing.expect(err == error.OutOfMemory);
+            continue;
+        };
+        try testing.expect(!failing.has_induced_failure);
+        return;
+    }
+    return error.AllocationBoundExceeded;
+}

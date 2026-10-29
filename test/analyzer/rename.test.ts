@@ -33,6 +33,38 @@ function bindingNamed(file: SourceFile, name: string) {
 }
 
 describe("rename", () => {
+    test("an Annex B declaration cannot rename only one of its two bindings", () => {
+        // both entry points must refuse before changing the shared declaration or any use
+        const source = "{ function f() { return f; } } f;";
+        const file = parse(source, { lang: "js", sourceType: "script", semantic: true });
+        const before = print(file).code;
+        expect(file.bindings).toHaveLength(2);
+        for (const binding of file.bindings) {
+            expect(binding.rename("g").map(({ message }) => message)).toEqual([
+                "Cannot rename 'f', which participates in Annex B block function bindings",
+            ]);
+            expect(print(file).code).toBe(before);
+        }
+    });
+
+    test("renaming cannot introduce or suppress an Annex B companion", () => {
+        // moving a lexical blocker can change bindings outside the renamed scope
+        for (const [source, from, to] of [
+            ["let f; { function f() {} } g;", "f", "g"],
+            ["{ let f; { function f() {} } } f;", "f", "g"],
+            ["{ let g; { function f() {} } } f;", "g", "f"],
+            ["function outer(f = 1) { { function f() {} } f; }", "f", "g"],
+        ] as const) {
+            const file = parse(source, { lang: "js", sourceType: "script", semantic: true });
+            const before = print(file).code;
+            const binding = file.bindings.find((candidate) => candidate.name === from)!;
+            expect(binding.rename(to).map(({ message }) => message)).toContain(
+                `Cannot rename '${from}', which participates in Annex B block function bindings`,
+            );
+            expect(print(file).code).toBe(before);
+        }
+    });
+
   test("renames the declaration and every reference", () => {
     expect(renamed(`let a = 1; a++; f(a); let o = { a };`, "a", "count")).toBe(
       "let count = 1;\ncount++;\nf(count);\nlet o = { a: count };",

@@ -4,7 +4,13 @@ import { describe, expect, test } from "bun:test";
 import ts from "typescript";
 import { parse, type SourceLang, type SourceType } from "yuku";
 import { corpusAndProjectFiles, type CorpusFile } from "../corpus";
-import { differential, singleFileProgram, type Comparison, type Known } from "./utils/differential";
+import {
+    differential,
+    explicitDeclarations,
+    singleFileProgram,
+    type Comparison,
+    type Known,
+} from "./utils/differential";
 
 const FILE_NAMES: Record<SourceLang, string> = {
   js: "input.js",
@@ -178,8 +184,10 @@ function compare(
     const position = reference.node.start;
     const theirs = tsc.resolve(position);
     if (theirs === null) continue;
+    const declarations = explicitDeclarations(reference.binding);
+    if (reference.binding !== null && declarations.length === 0) continue;
     compared++;
-    const ours = reference.binding?.declarations.map((declaration) => declaration.start) ?? [];
+    const ours = declarations.map((declaration) => declaration.start);
     const agree = ours.length === 0 ? theirs.length === 0 : ours.some((d) => theirs.includes(d));
     if (agree || tsc.rejects(reference.name, [position, ...ours, ...theirs])) continue;
     const yuku = ours.join(",") || "unresolved";
