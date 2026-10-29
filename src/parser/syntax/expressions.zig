@@ -99,17 +99,15 @@ fn parsePrefix(
     if (tag == .import) return parseImportExpression(parser);
     if (tag == .async) return parseAsyncFunctionOrArrow(parser, precedence, options);
 
-    if (tag == .less_than) {
-        if (parser.tree.isTs()) {
-            const start = parser.current_token.span.start;
-            if (precedence <= Precedence.Assignment) {
-                if (try ts.tryParseGenericArrow(parser, false, start, options)) |arrow| {
-                    return arrow;
-                }
+    if (tag == .less_than and parser.tree.isTs()) {
+        const start = parser.current_token.span.start;
+        if (precedence <= Precedence.Assignment) {
+            if (try ts.tryParseGenericArrow(parser, false, start, options)) |arrow| {
+                return arrow;
             }
-            if (!parser.tree.isJsx()) return ts.parseTypeAssertion(parser);
         }
-        if (parser.tree.isJsx()) return jsx.parseJsxExpression(parser);
+        if (!parser.tree.isJsx()) return ts.parseTypeAssertion(parser);
+        return jsx.parseJsxExpression(parser);
     }
 
     return parsePrimaryExpression(parser, precedence);
@@ -174,6 +172,18 @@ fn parseInfix(
 inline fn parsePrimaryExpression(parser: *Parser, precedence: u8) Error!?ast.NodeIndex {
     if (parser.current_token.tag.isNumericLiteral()) {
         return literals.parseNumericLiteral(parser);
+    }
+
+    if (parser.current_token.tag == .less_than and parser.tree.isJsx()) {
+        const expression = try jsx.parseJsxExpression(parser) orelse return null;
+        if (parser.tree.isTs()) {
+            try parser.report(
+                parser.tree.span(expression),
+                "JSX expressions must be parenthesized in this position in TypeScript",
+                .{ .help = "Wrap the JSX expression in parentheses" },
+            );
+        }
+        return expression;
     }
 
     return switch (parser.current_token.tag) {

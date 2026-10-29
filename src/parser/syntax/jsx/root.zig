@@ -187,7 +187,6 @@ fn parseJsxClosingElement(
             .help = "JSX opening and closing tags must have matching names",
             .labels = try parser.labels(&.{parser.label(opening_span, "opening tag")}),
         });
-        return null;
     }
 
     return try parser.tree.addNode(
