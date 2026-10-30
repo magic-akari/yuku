@@ -510,7 +510,10 @@ fn parseExportNamedFromClause(
     start: u32,
     export_kind: ast.ImportOrExportKind,
 ) Error!?ast.NodeIndex {
-    const result = try parseExportSpecifiers(parser) orelse return null;
+    const tags_checkpoint = parser.scratch_b.begin();
+    defer parser.scratch_b.reset(tags_checkpoint);
+
+    const specifiers = try parseExportSpecifiers(parser) orelse return null;
 
     var source: ast.NodeIndex = .null;
     var attributes = ast.IndexRange.empty;
@@ -520,14 +523,15 @@ fn parseExportNamedFromClause(
         source = try parseModuleSpecifier(parser) orelse return null;
         attributes = try parseWithClause(parser);
     } else {
-        try resolveLocalExportSpecifiers(parser, result);
+        const local_tags = parser.scratch_b.items.items[tags_checkpoint..];
+        try resolveLocalExportSpecifiers(parser, specifiers, local_tags);
     }
 
     const end = try parser.eatSemicolon(parser.prev_token_end) orelse return null;
 
     return try parser.tree.addNode(.{ .export_named_declaration = .{
         .declaration = .null,
-        .specifiers = result.specifiers,
+        .specifiers = specifiers,
         .source = source,
         .attributes = attributes,
         .export_kind = export_kind,
@@ -674,16 +678,12 @@ fn exportKindForDeclaration(parser: *Parser, declaration: ast.NodeIndex) ast.Imp
     return if (declared) .type else .value;
 }
 
-const ExportSpecifiersResult = struct {
+fn resolveLocalExportSpecifiers(
+    parser: *Parser,
     specifiers: ast.IndexRange,
-    local_tags: ast.IndexRange,
-};
-
-fn resolveLocalExportSpecifiers(parser: *Parser, result: ExportSpecifiersResult) Error!void {
-    const specifiers = parser.tree.extra(result.specifiers);
-    const local_tags = parser.tree.extra(result.local_tags);
-
-    for (specifiers, 0..) |node, i| {
+    local_tags: []const ast.NodeIndex,
+) Error!void {
+    for (parser.tree.extra(specifiers), local_tags) |node, tag| {
         const specifier = parser.tree.data(node).export_specifier;
         const local_data = parser.tree.data(specifier.local);
         const local_span = parser.tree.span(specifier.local);
@@ -697,7 +697,7 @@ fn resolveLocalExportSpecifiers(parser: *Parser, result: ExportSpecifiersResult)
             continue;
         }
 
-        const local_tag: TokenTag = @bitCast(local_tags[i]);
+        const local_tag: TokenTag = @bitCast(tag);
 
         if (local_tag.isReserved()) {
             const local_name = parser.tree.string(local_data.identifier_name.name);
@@ -720,11 +720,9 @@ fn resolveLocalExportSpecifiers(parser: *Parser, result: ExportSpecifiersResult)
     }
 }
 
-fn parseExportSpecifiers(parser: *Parser) Error!?ExportSpecifiersResult {
+fn parseExportSpecifiers(parser: *Parser) Error!?ast.IndexRange {
     const checkpoint = parser.scratch_a.begin();
     defer parser.scratch_a.reset(checkpoint);
-    const tags_checkpoint = parser.scratch_b.begin();
-    defer parser.scratch_b.reset(tags_checkpoint);
 
     if (!try parser.expect(.left_brace, "Expected '{' to start the named exports", null)) {
         return null;
@@ -744,10 +742,7 @@ fn parseExportSpecifiers(parser: *Parser) Error!?ExportSpecifiersResult {
         return null;
     }
 
-    return .{
-        .specifiers = try parser.flushToExtras(&parser.scratch_a, checkpoint),
-        .local_tags = try parser.flushToExtras(&parser.scratch_b, tags_checkpoint),
-    };
+    return try parser.flushToExtras(&parser.scratch_a, checkpoint);
 }
 
 fn parseExportSpecifier(parser: *Parser) Error!?ast.NodeIndex {
