@@ -23,16 +23,16 @@ const PLAYGROUND_URL = "https://playground.yuku.fyi";
 
 const ORDER = [
   "",
-  "parser",
-  "parser/ast",
-  "parser/semantic",
-  "parser/traverse",
-  "parser/codegen",
   "javascript",
   "javascript/parse",
   "javascript/walk",
   "javascript/semantic",
   "javascript/print",
+  "parser",
+  "parser/ast",
+  "parser/semantic",
+  "parser/traverse",
+  "parser/codegen",
   "testing",
   "security",
 ];
