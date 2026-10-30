@@ -25,9 +25,9 @@
     <nav id="menu" class="centered">
       <a href="$site.page('').link()">Introduction</a>
       •
-      <a href="$site.page('javascript').link()" class="$page.link().startsWith('/javascript/').then('current', '')">JavaScript</a>
-      •
       <a href="$site.page('parser').link()" class="$page.link().startsWith('/parser/').then('current', '')">Zig</a>
+      •
+      <a href="$site.page('javascript').link()" class="$page.link().startsWith('/javascript/').then('current', '')">JavaScript</a>
       •
       <a href="$site.page('testing').link()">Testing</a>
       •
