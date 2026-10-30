@@ -712,7 +712,6 @@ fn resolveLocalExportSpecifiers(
     }
 }
 
-// The caller keeps scratch_b alive through local binding validation.
 fn parseExportSpecifiers(parser: *Parser) Error!?ast.IndexRange {
     const checkpoint = parser.scratch_a.begin();
     defer parser.scratch_a.reset(checkpoint);
