@@ -1,8 +1,8 @@
 test/parser/misc/ts
 ===================
-Passed:       109/109 (100.00%)
+Passed:       110/110 (100.00%)
 Failed:       0
-AST mismatch: 0/109
+AST mismatch: 0/110
 
 ✓ test/parser/misc/ts/abstract-constructor-body.ts
 error: 'abstract' modifier cannot appear on a constructor declaration
@@ -284,6 +284,16 @@ error: An instantiation expression cannot be followed by a property access
 
 
 ✓ test/parser/misc/ts/jsx-fused-angle-type-args.tsx
+✓ test/parser/misc/ts/jsx-primary-expression.tsx
+error: JSX expressions must be parenthesized in this position in TypeScript
+   |
+ 1 | new <a/>();
+   |     ^^^^
+ 2 | class A extends <a/> {}
+   |
+   = help: Wrap the JSX expression in parentheses
+
+
 ✓ test/parser/misc/ts/legacy-octal-literal-types.module.ts
 error: Octal literals are not allowed in strict mode
    |

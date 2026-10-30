@@ -201,7 +201,6 @@ fn parseJsxClosingElement(
             }),
             .labels = try parser.labels(&.{parser.label(opening_span, "opening tag")}),
         });
-        return null;
     }
 
     return try parser.tree.addNode(
