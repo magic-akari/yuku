@@ -452,7 +452,7 @@
   "diagnostics": [
     {
       "severity": "error",
-      "message": "Expected closing tag for '<a>' but found '</b>'",
+      "message": "Expected corresponding JSX closing tag for '<a>', but found '</b>'",
       "path": null,
       "start": 185,
       "end": 186,
@@ -463,11 +463,11 @@
           "message": "opening tag"
         }
       ],
-      "help": "JSX opening and closing tags must have matching names"
+      "help": "Rename the closing tag to '</a>'"
     },
     {
       "severity": "error",
-      "message": "Expected closing tag for '<a>' but found '</b>'",
+      "message": "Expected corresponding JSX closing tag for '<a>', but found '</b>'",
       "path": null,
       "start": 212,
       "end": 213,
@@ -478,16 +478,16 @@
           "message": "opening tag"
         }
       ],
-      "help": "JSX opening and closing tags must have matching names"
+      "help": "Rename the closing tag to '</a>'"
     },
     {
       "severity": "error",
-      "message": "Expected JSX element name, but found ';'",
+      "message": "Expected a JSX element name, but found ';'",
       "path": null,
       "start": 248,
       "end": 249,
       "labels": [],
-      "help": "JSX element names must start with a valid identifier"
+      "help": "Start the tag name with a letter, '_', or '$'"
     }
   ]
 }

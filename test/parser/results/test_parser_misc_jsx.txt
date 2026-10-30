@@ -19,7 +19,7 @@ error: Expected corresponding JSX closing tag for '<a.b>', but found '</a.c>'
 ✓ test/parser/misc/jsx/entities.jsx
 ✓ test/parser/misc/jsx/fragment-child-text.jsx
 ✓ test/parser/misc/jsx/primary-expression.jsx
-error: Expected closing tag for '<a>' but found '</b>'
+error: Expected corresponding JSX closing tag for '<a>', but found '</b>'
    |
  9 | class D extends <a/>.constructor {}
 10 | new <a></b>();
@@ -27,7 +27,7 @@ error: Expected closing tag for '<a>' but found '</b>'
    |      ~ opening tag
 11 | class E extends <a></b> {}
    |
-   = help: JSX opening and closing tags must have matching names
+   = help: Rename the closing tag to '</a>'
 
 
 ✓ test/parser/misc/jsx/self-closing-element-attribute-value.jsx

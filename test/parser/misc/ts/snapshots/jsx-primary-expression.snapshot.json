@@ -675,7 +675,7 @@
     },
     {
       "severity": "error",
-      "message": "Expected closing tag for '<a>' but found '</b>'",
+      "message": "Expected corresponding JSX closing tag for '<a>', but found '</b>'",
       "path": null,
       "start": 185,
       "end": 186,
@@ -686,7 +686,7 @@
           "message": "opening tag"
         }
       ],
-      "help": "JSX opening and closing tags must have matching names"
+      "help": "Rename the closing tag to '</a>'"
     },
     {
       "severity": "error",
@@ -699,7 +699,7 @@
     },
     {
       "severity": "error",
-      "message": "Expected closing tag for '<a>' but found '</b>'",
+      "message": "Expected corresponding JSX closing tag for '<a>', but found '</b>'",
       "path": null,
       "start": 212,
       "end": 213,
@@ -710,7 +710,7 @@
           "message": "opening tag"
         }
       ],
-      "help": "JSX opening and closing tags must have matching names"
+      "help": "Rename the closing tag to '</a>'"
     },
     {
       "severity": "error",
@@ -723,12 +723,18 @@
     },
     {
       "severity": "error",
-      "message": "Expected '</' to close the JSX element, but found 'end of file'",
+      "message": "JSX element 'a' has no corresponding closing tag",
       "path": null,
       "start": 304,
       "end": 304,
-      "labels": [],
-      "help": "Add a closing tag to match the opening element"
+      "labels": [
+        {
+          "start": 301,
+          "end": 302,
+          "message": "opening tag"
+        }
+      ],
+      "help": "Add '</a>' to close the element"
     }
   ]
 }
